@@ -1,0 +1,94 @@
+{% extends "base.html" %}
+{% block title %}Inventário — Proati{% endblock %}
+{% block nav %}
+<nav class="nav-tabs">
+  <button class="nav-tab active" data-tab="tablets" type="button"><span class="tab-icon">📋</span> Tablets</button>
+  <button class="nav-tab" data-tab="regular" type="button"><span class="tab-icon">💻</span> Regular</button>
+  <button class="nav-tab" data-tab="tecnico" type="button"><span class="tab-icon">🖥️</span> Técnico</button>
+  <button class="nav-tab" data-tab="manutencao" type="button"><span class="tab-icon">🔧</span> Manutenção</button>
+  <button class="nav-tab" data-tab="manutencao_tecnico" type="button"><span class="tab-icon">🛠️</span> Manutenção Técnico</button>
+  {% if is_admin %}
+  <button class="nav-tab" data-tab="admin" type="button"><span class="tab-icon">⚙</span> Administração</button>
+  {% endif %}
+</nav>
+{% endblock %}
+{% block content %}
+<div id="view-inventory" class="view active">
+  <div class="stats-bar" id="summary-grid"></div>
+  <div class="day-header">
+    <span class="day-title" id="tab-label">Tablets</span>
+    {% if can_edit %}
+    <button class="save-btn" id="btn-add" type="button">+ ADICIONAR</button>
+    {% endif %}
+  </div>
+  <div class="table-wrap">
+    <table class="schedule" id="equip-table">
+      <thead id="equip-head"></thead>
+      <tbody id="equip-body"></tbody>
+    </table>
+  </div>
+</div>
+
+{% if is_admin %}
+<div id="view-admin" class="view">
+  <div class="resumo-wrap">
+    <div class="section-title">Usuários e cargos</div>
+    <p class="admin-hint">Novas contas entram como <strong>visualizador</strong>. Altere o cargo para liberar o painel.</p>
+    <table class="resumo-table">
+      <thead>
+        <tr>
+          <th>Usuário</th>
+          <th>E-mail</th>
+          <th>Cargo</th>
+          <th style="width:220px">Ações</th>
+        </tr>
+      </thead>
+      <tbody id="users-body"></tbody>
+    </table>
+  </div>
+</div>
+{% endif %}
+
+<div class="modal-overlay" id="equip-modal">
+  <div class="modal">
+    <div class="modal-header">
+      <span class="modal-title" id="modal-title">Novo equipamento</span>
+      <button class="modal-close-btn" type="button" id="modal-close">✕</button>
+    </div>
+    <form class="modal-body" id="equip-form">
+      <input type="hidden" id="equip-id">
+      <label id="label-modelo">Modelo equipamento</label>
+      <input class="form-input" id="f-modelo" maxlength="120" placeholder="Ex: Dell Latitude 3420">
+      <label>Serial equipamento</label>
+      <input class="form-input" id="f-serial" required maxlength="120" placeholder="Número de série">
+      <label>Numeração</label>
+      <input class="form-input" id="f-numeracao" required maxlength="80" placeholder="Ex: 01">
+      <div id="wrap-problema">
+        <label>Descrição do problema</label>
+        <textarea class="form-input" id="f-problema" maxlength="2000" placeholder="Descreva o problema..."></textarea>
+      </div>
+      <div id="wrap-status">
+        <label>Status</label>
+        <select class="form-input" id="f-status"></select>
+      </div>
+    </form>
+    <div class="modal-footer">
+      <button class="close-footer-btn" type="button" id="modal-cancel">CANCELAR</button>
+      <button class="print-btn" type="submit" form="equip-form" id="modal-save">SALVAR</button>
+    </div>
+  </div>
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+  window.PROATI = {
+    canEdit: {{ can_edit | tojson }},
+    isAdmin: {{ is_admin | tojson }},
+    tabletModel: {{ TABLET_MODEL | tojson }},
+    inventoryStatuses: {{ INVENTORY_STATUSES | tojson }},
+    maintenanceStatuses: {{ MAINTENANCE_STATUSES | tojson }},
+    roles: {{ ROLES | tojson }}
+  };
+</script>
+<script src="{{ url_for('static', filename='js/app.js') }}"></script>
+{% endblock %}

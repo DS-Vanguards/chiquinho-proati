@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#0a0a0a">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=DM+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+  <title>{% block title %}Proati{% endblock %}</title>
+</head>
+<body class="{% block body_class %}{% endblock %}">
+  {% block body %}
+  <div class="topbar">
+    <div class="topbar-brand">
+      <div class="brand-dot"></div>
+      <div>
+        <div class="brand-name">PROATI</div>
+        <div class="brand-sub">Curso Técnico · Inventário</div>
+      </div>
+    </div>
+    {% block nav %}{% endblock %}
+    {% if current_user.is_authenticated %}
+    <div class="topbar-actions">
+      <span class="user-chip">{{ current_user.username }} · {{ current_user.role }}</span>
+      <a class="reset-btn" href="{{ url_for('logout') }}">SAIR</a>
+    </div>
+    {% endif %}
+  </div>
+
+  {% with messages = get_flashed_messages(with_categories=true) %}
+    {% if messages %}
+      <div class="flash-wrap">
+        {% for category, message in messages %}
+          <div class="flash flash-{{ category }}">{{ message }}</div>
+        {% endfor %}
+      </div>
+    {% endif %}
+  {% endwith %}
+
+  {% block content %}{% endblock %}
+  {% endblock %}
+
+  <div class="toast" id="toast"></div>
+  {% block scripts %}{% endblock %}
+</body>
+</html>

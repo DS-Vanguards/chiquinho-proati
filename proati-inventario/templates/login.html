@@ -1,0 +1,20 @@
+{% extends "base.html" %}
+{% block title %}Entrar — Proati{% endblock %}
+{% block content %}
+<div class="auth-wrap">
+  <div class="auth-card">
+    <div class="auth-kicker">PROATI</div>
+    <h1>Entrar</h1>
+    <p class="subtitle">Contabilização de notebooks e tablets do curso técnico</p>
+    <form method="POST" class="form">
+      <label for="identifier">Usuário ou e-mail</label>
+      <input class="form-input" type="text" id="identifier" name="identifier" required autofocus
+             placeholder="admin ou e-mail institucional">
+      <label for="password">Senha</label>
+      <input class="form-input" type="password" id="password" name="password" required>
+      <button type="submit" class="save-btn auth-submit">ENTRAR</button>
+    </form>
+    <p class="auth-link">Não tem conta? <a href="{{ url_for('register') }}">Criar conta</a></p>
+  </div>
+</div>
+{% endblock %}

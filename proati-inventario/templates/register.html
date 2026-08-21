@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+{% block title %}Cadastro — Proati{% endblock %}
+{% block content %}
+<div class="auth-wrap">
+  <div class="auth-card">
+    <div class="auth-kicker">PROATI</div>
+    <h1>Criar conta</h1>
+    <p class="subtitle">Somente e-mails @prof.educacao.sp.gov.br e @professor.educacao.sp.gov.br</p>
+    <form method="POST" class="form">
+      <label for="username">Nome de usuário</label>
+      <input class="form-input" type="text" id="username" name="username" required minlength="3" placeholder="Ex: Maiara">
+      <label for="email">E-mail institucional</label>
+      <input class="form-input" type="email" id="email" name="email" required placeholder="nome@prof.educacao.sp.gov.br">
+      <label for="password">Senha</label>
+      <input class="form-input" type="password" id="password" name="password" required minlength="6">
+      <label for="confirm_password">Confirmar senha</label>
+      <input class="form-input" type="password" id="confirm_password" name="confirm_password" required minlength="6">
+      <button type="submit" class="save-btn auth-submit">CADASTRAR</button>
+    </form>
+    <p class="auth-link">Já tem conta? <a href="{{ url_for('login') }}">Entrar</a></p>
+  </div>
+</div>
+{% endblock %}
