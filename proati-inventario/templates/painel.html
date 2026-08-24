@@ -33,18 +33,20 @@
 <div id="view-admin" class="view">
   <div class="resumo-wrap">
     <div class="section-title">Usuários e cargos</div>
-    <p class="admin-hint">Novas contas entram como <strong>visualizador</strong>. Altere o cargo para liberar o painel.</p>
+    <p class="admin-hint">Novas contas entram como <strong>visualizador</strong>. Altere o cargo e clique em <strong>Salvar</strong> para liberar o painel. Use <strong>Redefinir senha</strong> para o professor entrar só com o usuário e criar uma senha nova.</p>
+    <div class="table-wrap admin-table-wrap">
     <table class="resumo-table">
       <thead>
         <tr>
           <th>Usuário</th>
           <th>E-mail</th>
           <th>Cargo</th>
-          <th style="width:220px">Ações</th>
+          <th>Ações</th>
         </tr>
       </thead>
       <tbody id="users-body"></tbody>
     </table>
+    </div>
   </div>
 </div>
 {% endif %}

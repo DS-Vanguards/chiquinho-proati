@@ -228,18 +228,25 @@ async function loadUsers() {
       const options = window.PROATI.roles
         .map((r) => `<option value="${r}" ${r === user.role ? "selected" : ""}>${roleLabel(r)}</option>`)
         .join("");
+      const pending = user.must_reset_password
+        ? `<span class="badge badge-yellow">Aguardando senha</span>`
+        : "";
+      const cargo = user.is_self
+        ? `<span class="badge badge-${user.role}">${roleLabel(user.role)}</span><span class="text-muted">Sua conta</span>`
+        : `<select class="form-input inline-select" data-role="${user.id}">${options}</select>
+           <button class="btn-sm btn-save-role" data-save-role="${user.id}" type="button">Salvar</button>`;
+      const delBtn = user.is_self
+        ? ""
+        : `<button class="btn-sm btn-danger" data-del-user="${user.id}" type="button">Excluir conta</button>`;
       return `<tr>
-        <td>${escapeHtml(user.username)}</td>
+        <td><strong>${escapeHtml(user.username)}</strong> ${pending}</td>
         <td>${escapeHtml(user.email)}</td>
-        <td><span class="badge badge-${user.role}">${roleLabel(user.role)}</span></td>
-        <td class="actions-cell">
-          ${
-            user.is_self
-              ? `<span class="text-muted">Sua conta</span>`
-              : `<select class="form-input inline-select" data-role="${user.id}">${options}</select>
-                 <button class="btn-sm" data-save-role="${user.id}" type="button">Salvar</button>
-                 <button class="btn-sm btn-danger" data-del-user="${user.id}" type="button">Excluir</button>`
-          }
+        <td><div class="cargo-cell">${cargo}</div></td>
+        <td>
+          <div class="actions-stack">
+            <button class="btn-sm btn-warning" data-reset="${user.id}" type="button">Redefinir senha</button>
+            ${delBtn}
+          </div>
         </td>
       </tr>`;
     })
@@ -260,11 +267,22 @@ async function saveRole(userId) {
   }
 }
 
+async function resetPassword(userId) {
+  if (!confirm("Redefinir a senha deste usuário? Ele poderá entrar só com o usuário/e-mail e criar uma senha nova.")) return;
+  try {
+    await request(`/api/usuarios/${userId}/redefinir-senha`, { method: "POST" });
+    showToast("✔ Senha redefinida. O usuário entra sem senha e cria uma nova.");
+    await loadUsers();
+  } catch (err) {
+    showToast("✘ " + err.message);
+  }
+}
+
 async function deleteUser(userId) {
-  if (!confirm("Excluir este usuário permanentemente?")) return;
+  if (!confirm("Excluir esta conta permanentemente?")) return;
   try {
     await request(`/api/usuarios/${userId}`, { method: "DELETE" });
-    showToast("✔ Usuário excluído");
+    showToast("✔ Conta excluída");
     await loadUsers();
   } catch (err) {
     showToast("✘ " + err.message);
@@ -313,10 +331,12 @@ $("equip-body").addEventListener("click", (e) => {
 const usersBody = $("users-body");
 if (usersBody) {
   usersBody.addEventListener("click", (e) => {
-    const saveId = e.target.dataset.saveRole;
-    const delId = e.target.dataset.delUser;
-    if (saveId) saveRole(saveId);
-    if (delId) deleteUser(delId);
+    const saveBtn = e.target.closest("[data-save-role]");
+    const delBtn = e.target.closest("[data-del-user]");
+    const resetBtn = e.target.closest("[data-reset]");
+    if (saveBtn) saveRole(saveBtn.dataset.saveRole);
+    if (delBtn) deleteUser(delBtn.dataset.delUser);
+    if (resetBtn) resetPassword(resetBtn.dataset.reset);
   });
 }
 

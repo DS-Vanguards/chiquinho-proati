@@ -1,6 +1,7 @@
 from datetime import datetime
 
 from flask_login import UserMixin
+from sqlalchemy import inspect, text
 from sqlalchemy.exc import IntegrityError
 from werkzeug.security import check_password_hash, generate_password_hash
 
@@ -16,10 +17,12 @@ class User(UserMixin, db.Model):
     email = db.Column(db.String(120), unique=True, nullable=False)
     password_hash = db.Column(db.String(256), nullable=False)
     role = db.Column(db.String(20), default="visualizador", nullable=False)
+    must_reset_password = db.Column(db.Boolean, default=False, nullable=False)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
     def set_password(self, password: str) -> None:
         self.password_hash = generate_password_hash(password)
+        self.must_reset_password = False
 
     def check_password(self, password: str) -> bool:
         if not self.password_hash:
@@ -80,6 +83,20 @@ class Equipment(db.Model):
             "status": self.status or "",
             "problema": self.problema or "",
         }
+
+
+def ensure_schema():
+    inspector = inspect(db.engine)
+    if "users" not in inspector.get_table_names():
+        return
+    columns = {column["name"] for column in inspector.get_columns("users")}
+    if "must_reset_password" not in columns:
+        db.session.execute(
+            text(
+                "ALTER TABLE users ADD COLUMN must_reset_password BOOLEAN NOT NULL DEFAULT FALSE"
+            )
+        )
+        db.session.commit()
 
 
 def init_default_data():

@@ -20,7 +20,7 @@ from sqlalchemy.exc import IntegrityError
 
 import config
 from extensions import db
-from models import Equipment, User, init_default_data
+from models import Equipment, User, ensure_schema, init_default_data
 
 app = Flask(__name__)
 app.config.from_object(config)
@@ -33,6 +33,7 @@ login_manager.login_message_category = "error"
 
 with app.app_context():
     db.create_all()
+    ensure_schema()
     init_default_data()
 
 
@@ -166,7 +167,14 @@ def login():
             (User.username == identifier) | (User.email == identifier)
         ).first()
 
-        if not user or not user.check_password(password):
+        if not user:
+            flash("Usuário ou e-mail não encontrado.", "error")
+            return render_template("login.html")
+
+        if user.must_reset_password or not user.password_hash:
+            return render_template("set_password.html", user=user, forced=True)
+
+        if not password or not user.check_password(password):
             flash("Usuário ou senha incorretos.", "error")
             return render_template("login.html")
 
@@ -174,6 +182,14 @@ def login():
         return redirect(url_for(home_for(user)))
 
     return render_template("login.html")
+
+
+@app.before_request
+def force_password_reset():
+    if request.endpoint in (None, "static", "set_password", "logout", "login"):
+        return
+    if current_user.is_authenticated and getattr(current_user, "must_reset_password", False):
+        return redirect(url_for("set_password"))
 
 
 @app.route("/register", methods=["GET", "POST"])
@@ -212,6 +228,34 @@ def register():
             return redirect(url_for("login"))
 
     return render_template("register.html")
+
+
+@app.route("/set-password", methods=["GET", "POST"])
+def set_password():
+    user = None
+    if request.method == "POST":
+        user_id = request.form.get("user_id", type=int)
+        password = request.form.get("password", "")
+        confirm = request.form.get("confirm_password", "")
+        user = db.session.get(User, user_id) if user_id else None
+        if not user or not (user.must_reset_password or not user.password_hash):
+            flash("Esta conta não está aguardando redefinição de senha.", "error")
+            return redirect(url_for("login"))
+        if len(password) < 6:
+            flash("A senha deve ter pelo menos 6 caracteres.", "error")
+            return render_template("set_password.html", user=user, forced=True)
+        if password != confirm:
+            flash("As senhas não coincidem.", "error")
+            return render_template("set_password.html", user=user, forced=True)
+        user.set_password(password)
+        db.session.commit()
+        login_user(user)
+        flash("Senha definida com sucesso.", "success")
+        return redirect(url_for(home_for(user)))
+
+    if current_user.is_authenticated and current_user.must_reset_password:
+        return render_template("set_password.html", user=current_user, forced=True)
+    return redirect(url_for("login"))
 
 
 @app.route("/logout")
@@ -325,6 +369,7 @@ def api_list_users():
                     "email": user.email,
                     "role": user.role,
                     "is_self": user.id == current_user.id,
+                    "must_reset_password": bool(user.must_reset_password),
                 }
                 for user in users
             ]
@@ -354,6 +399,17 @@ def api_update_role(user_id):
     user.role = role
     db.session.commit()
     return jsonify({"ok": True, "role": user.role})
+
+
+@app.route("/api/usuarios/<int:user_id>/redefinir-senha", methods=["POST"])
+@admin_required
+def api_reset_password(user_id):
+    user = db.session.get(User, user_id)
+    if not user:
+        return jsonify({"erro": "Usuário não encontrado."}), 404
+    user.must_reset_password = True
+    db.session.commit()
+    return jsonify({"ok": True})
 
 
 @app.route("/api/usuarios/<int:user_id>", methods=["DELETE"])
