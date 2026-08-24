@@ -51,7 +51,7 @@ ALL_TABS = INVENTORY_TABS + MAINTENANCE_TABS
 
 TABLET_MODEL = "Multilaser T2040"
 
-INVENTORY_STATUSES = ["Perfeito estado", "Danos perifericos", "Danos fisicos", "Inoperante"]
+INVENTORY_STATUSES = ["Perfeito estado", "Danos periféricos", "Danos físicos"]
 MAINTENANCE_STATUSES = [
     "Aguardando chamado",
     "Chamado realizado",
