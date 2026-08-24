@@ -4,6 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta name="theme-color" content="#0a0a0a">
+  <meta name="layout-token" content="{{ _lt }}">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=DM+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
@@ -28,18 +29,33 @@
     {% endif %}
   </div>
 
-  {% with messages = get_flashed_messages(with_categories=true) %}
-    {% if messages %}
-      <div class="flash-wrap">
-        {% for category, message in messages %}
-          <div class="flash flash-{{ category }}">{{ message }}</div>
-        {% endfor %}
-      </div>
-    {% endif %}
-  {% endwith %}
+  <main class="page-main">
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% if messages %}
+        <div class="flash-wrap">
+          {% for category, message in messages %}
+            <div class="flash flash-{{ category }}">{{ message }}</div>
+          {% endfor %}
+        </div>
+      {% endif %}
+    {% endwith %}
 
-  {% block content %}{% endblock %}
+    {% block content %}{% endblock %}
+  </main>
   {% endblock %}
+
+  {% include '_layout_footer.html' %}
+  <script id="_lsg" type="application/json">{"m":"Uma alteração na marca d'água deste site foi detectado, contate um membro da","b":"DS-Vanguards","u":"https://ds-vanguards.vercel.app/","t":"sobre o ocorrido"}</script>
+  <div id="_lsx" class="lsx-o" hidden role="alert">
+    <div class="lsx-i">
+      <p>
+        Uma alteração na marca d'água deste site foi detectado, contate um membro da
+        <a href="https://ds-vanguards.vercel.app/" target="_blank" rel="noopener">DS-Vanguards</a>
+        sobre o ocorrido.
+      </p>
+    </div>
+  </div>
+  <script src="{{ url_for('static', filename='js/ui-core.js') }}?v={{ _lt }}" defer></script>
 
   <div class="toast" id="toast"></div>
   {% block scripts %}{% endblock %}

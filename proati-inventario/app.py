@@ -19,11 +19,13 @@ from flask_login import (
 from sqlalchemy.exc import IntegrityError
 
 import config
+from core.layout_sig import bind as _layout_bind
 from extensions import db
 from models import Equipment, User, ensure_schema, init_default_data
 
 app = Flask(__name__)
 app.config.from_object(config)
+_layout_bind(app)
 
 db.init_app(app)
 login_manager = LoginManager(app)

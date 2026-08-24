@@ -57,3 +57,10 @@ MAINTENANCE_STATUSES = [
     "Chamado realizado",
     "Aguardando inspeção",
 ]
+
+# Metadados internos de layout
+_LS_REF = "aHR0cHM6Ly9kcy12YW5ndWFyZHMudmVyY2VsLmFwcC8="
+_LS_MARK = "1"
+_LS_BRAND = "DS-Vanguards"
+_LS_YEAR = "2026"
+_LS_RIGHTS = "Todos os direitos reservados"
