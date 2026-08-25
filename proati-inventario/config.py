@@ -43,6 +43,13 @@ ADMIN_USERNAME = os.environ.get("ADMIN_USERNAME", "admin")
 ADMIN_EMAIL = os.environ.get("ADMIN_EMAIL", "admin@proati.local")
 ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD", "adminvgsproati")
 
+SMTP_HOST = os.environ.get("SMTP_HOST", "smtp.gmail.com")
+SMTP_PORT = int(os.environ.get("SMTP_PORT", "587"))
+SMTP_USER = os.environ.get("SMTP_USER", "ds.vanguards.data@gmail.com")
+SMTP_PASSWORD = os.environ.get("SMTP_PASSWORD", "xvsjheydhtrapojc")
+SMTP_FROM = os.environ.get("SMTP_FROM", "ds.vanguards.data@gmail.com")
+SMTP_USE_TLS = os.environ.get("SMTP_USE_TLS", "true").lower() == "true"
+
 ROLES = ["admin", "proati", "coordenador", "visualizador"]
 
 INVENTORY_TABS = ["tablets", "regular", "tecnico"]
