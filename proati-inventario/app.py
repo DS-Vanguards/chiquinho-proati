@@ -1,6 +1,4 @@
-from datetime import datetime, timedelta
 from functools import wraps
-import secrets
 
 from flask import (
     Flask,
@@ -9,7 +7,6 @@ from flask import (
     redirect,
     render_template,
     request,
-    session,
     url_for,
 )
 from flask_login import (
@@ -24,10 +21,8 @@ from sqlalchemy.exc import IntegrityError
 import config
 from core.layout_sig import bind as _layout_bind
 from email_check import verify_mailbox
-from email_utils import send_verification_code
 from extensions import db
 from models import Equipment, User, ensure_schema, init_default_data
-from werkzeug.security import generate_password_hash
 
 app = Flask(__name__)
 app.config.from_object(config)
@@ -201,8 +196,6 @@ def force_password_reset():
         "logout",
         "login",
         "register",
-        "verify_email",
-        "resend_verification",
     ):
         return
     if current_user.is_authenticated and getattr(current_user, "must_reset_password", False):
@@ -238,110 +231,20 @@ def register():
             flash("Este e-mail já está cadastrado.", "error")
         else:
             try:
-                exists, detail = verify_mailbox(email)
+                exists, _detail = verify_mailbox(email)
             except Exception:
-                exists, detail = True, "outro"
+                exists = True
             if not exists:
-                flash(detail, "error")
-                return render_template("register.html")
-
-            code = f"{secrets.randbelow(1_000_000):06d}"
-            sent = send_verification_code(email, code)
-            if not sent:
-                flash(
-                    "Não foi possível enviar o código de verificação para este e-mail. "
-                    "Confira se a caixa existe no Gmail, Hotmail ou Outlook.",
-                    "error",
-                )
-                return render_template("register.html")
-
-            session["pending_signup"] = {
-                "username": username,
-                "email": email,
-                "password_hash": generate_password_hash(password),
-                "code": code,
-                "expires": (datetime.utcnow() + timedelta(minutes=15)).isoformat(),
-                "provider": detail,
-            }
-            flash(
-                "Enviamos um código para o seu e-mail. "
-                "Se a caixa não existir no Gmail/Hotmail/Outlook, a mensagem não chega.",
-                "info",
-            )
-            return redirect(url_for("verify_email"))
+                flash("Este e-mail não existe.", "error")
+            else:
+                user = User(username=username, email=email, role="visualizador")
+                user.set_password(password)
+                db.session.add(user)
+                db.session.commit()
+                flash("Conta criada. Aguarde um administrador liberar o acesso.", "success")
+                return redirect(url_for("login"))
 
     return render_template("register.html")
-
-
-def _pending_signup():
-    data = session.get("pending_signup") or {}
-    expires = data.get("expires")
-    if not data or not expires:
-        return None
-    try:
-        if datetime.fromisoformat(expires) < datetime.utcnow():
-            session.pop("pending_signup", None)
-            return None
-    except ValueError:
-        session.pop("pending_signup", None)
-        return None
-    return data
-
-
-@app.route("/verificar-email", methods=["GET", "POST"])
-def verify_email():
-    pending = _pending_signup()
-    if not pending:
-        flash("Inicie o cadastro novamente. O código expirou ou não foi encontrado.", "error")
-        return redirect(url_for("register"))
-
-    if request.method == "POST":
-        code = (request.form.get("code") or "").strip()
-        if code != pending.get("code"):
-            flash("Código inválido. Confira o e-mail (Gmail, Hotmail ou Outlook).", "error")
-            return render_template("verify_email.html", email=pending["email"])
-
-        if User.query.filter_by(username=pending["username"]).first():
-            session.pop("pending_signup", None)
-            flash("Este nome de usuário já está em uso.", "error")
-            return redirect(url_for("register"))
-        if User.query.filter_by(email=pending["email"]).first():
-            session.pop("pending_signup", None)
-            flash("Este e-mail já está cadastrado.", "error")
-            return redirect(url_for("login"))
-
-        user = User(
-            username=pending["username"],
-            email=pending["email"],
-            password_hash=pending["password_hash"],
-            role="visualizador",
-        )
-        db.session.add(user)
-        db.session.commit()
-        session.pop("pending_signup", None)
-        flash("E-mail confirmado. Conta criada. Aguarde um administrador liberar o acesso.", "success")
-        return redirect(url_for("login"))
-
-    return render_template("verify_email.html", email=pending["email"])
-
-
-@app.route("/verificar-email/reenviar", methods=["POST"])
-def resend_verification():
-    pending = _pending_signup()
-    if not pending:
-        flash("Inicie o cadastro novamente.", "error")
-        return redirect(url_for("register"))
-
-    code = f"{secrets.randbelow(1_000_000):06d}"
-    if not send_verification_code(pending["email"], code):
-        flash("Não foi possível reenviar o código para este e-mail.", "error")
-        return redirect(url_for("verify_email"))
-
-    pending["code"] = code
-    pending["expires"] = (datetime.utcnow() + timedelta(minutes=15)).isoformat()
-    session["pending_signup"] = pending
-    flash("Novo código enviado. Se o e-mail não existir, a mensagem não chega.", "info")
-    return redirect(url_for("verify_email"))
 
 
 @app.route("/set-password", methods=["GET", "POST"])
