@@ -55,7 +55,7 @@ INVENTORY_STATUSES = ["Perfeito estado", "Danos periféricos", "Danos físicos"]
 MAINTENANCE_STATUSES = [
     "Aguardando chamado",
     "Chamado realizado",
-    "Aguardando inspeção"
+    "Aguardando inspeção",
 ]
 
 # Metadados internos de layout

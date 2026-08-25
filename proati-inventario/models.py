@@ -98,6 +98,25 @@ def ensure_schema():
         )
         db.session.commit()
 
+    if "equipment" in inspector.get_table_names():
+        db.session.execute(
+            text(
+                "UPDATE equipment SET status = 'Perfeito estado' WHERE status = 'Operante'"
+            )
+        )
+        db.session.execute(
+            text(
+                "UPDATE equipment SET status = 'Danos físicos' WHERE status = 'Inoperante'"
+            )
+        )
+        db.session.execute(
+            text(
+                "UPDATE equipment SET status = 'Danos periféricos' "
+                "WHERE status = 'Danos perifericos'"
+            )
+        )
+        db.session.commit()
+
 
 def init_default_data():
     try:

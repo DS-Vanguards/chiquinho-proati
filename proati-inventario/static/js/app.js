@@ -42,9 +42,9 @@ function isMaintenance() {
 
 function badgeClass(status) {
   const map = {
-    Operante: "badge-t",
-    Inoperante: "badge-n",
-    "Danos perifericos": "badge-yellow",
+    "Perfeito estado": "badge-t",
+    "Danos periféricos": "badge-yellow",
+    "Danos físicos": "badge-n",
     "Aguardando chamado": "badge-yellow",
     "Chamado realizado": "badge-t",
     "Aguardando inspeção": "badge-n",
@@ -72,14 +72,14 @@ function renderStats(items) {
       <div class="stat-item"><div class="stat-label">Aguardando inspeção</div><div class="stat-val" style="color:var(--pastel-orange)">${c}</div><div class="stat-unit">itens</div></div>`;
     return;
   }
-  const op = items.filter((i) => i.status === "Operante").length;
-  const inop = items.filter((i) => i.status === "Inoperante").length;
-  const dano = items.filter((i) => i.status === "Danos perifericos").length;
+  const ok = items.filter((i) => i.status === "Perfeito estado").length;
+  const peri = items.filter((i) => i.status === "Danos periféricos").length;
+  const fis = items.filter((i) => i.status === "Danos físicos").length;
   grid.innerHTML = `
     <div class="stat-item"><div class="stat-label">Total</div><div class="stat-val yellow">${items.length}</div><div class="stat-unit">unidades</div></div>
-    <div class="stat-item"><div class="stat-label">Operante</div><div class="stat-val green">${op}</div><div class="stat-unit">unidades</div></div>
-    <div class="stat-item"><div class="stat-label">Inoperante</div><div class="stat-val" style="color:var(--pastel-pink)">${inop}</div><div class="stat-unit">unidades</div></div>
-    <div class="stat-item"><div class="stat-label">Danos periféricos</div><div class="stat-val blue">${dano}</div><div class="stat-unit">unidades</div></div>`;
+    <div class="stat-item"><div class="stat-label">Perfeito estado</div><div class="stat-val green">${ok}</div><div class="stat-unit">unidades</div></div>
+    <div class="stat-item"><div class="stat-label">Danos periféricos</div><div class="stat-val blue">${peri}</div><div class="stat-unit">unidades</div></div>
+    <div class="stat-item"><div class="stat-label">Danos físicos</div><div class="stat-val" style="color:var(--pastel-pink)">${fis}</div><div class="stat-unit">unidades</div></div>`;
 }
 
 function renderHead() {
