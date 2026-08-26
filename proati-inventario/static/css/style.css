@@ -51,6 +51,7 @@ body {
   top: 0;
   z-index: 100;
   min-height: 52px;
+  flex-wrap: wrap;
 }
 
 .topbar-brand {
@@ -663,6 +664,15 @@ label {
   margin: 0 auto;
 }
 
+.restrito-logout {
+  margin-top: 28px;
+}
+.restrito-logout .reset-btn {
+  padding: 10px 28px;
+  font-size: 13px;
+  letter-spacing: 1.2px;
+}
+
 .access-denied-panel a.admin-link {
   color: var(--pastel-green);
   font-weight: 700;
@@ -736,6 +746,7 @@ label {
   .stats-bar { flex-wrap: wrap; }
   .stat-item { min-width: 50%; }
   .user-chip { display: none; }
+  .topbar-actions { border-left: none; padding: 8px 0 8px 8px; }
   .access-denied-panel { padding: 36px 20px; }
   .access-denied-panel h2 { font-size: 26px; }
 }
