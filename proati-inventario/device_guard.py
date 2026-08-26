@@ -1,0 +1,123 @@
+from datetime import datetime, timedelta
+import secrets
+
+from flask import make_response, request
+
+from extensions import db
+from models import DeviceBlock
+
+COOKIE_NAME = "dvg_machine"
+ATTEMPT_LIMIT = 4
+
+
+def parse_block_duration(amount, unit: str):
+    try:
+        value = int(amount)
+    except (TypeError, ValueError):
+        return None
+    if value < 1 or value > 999:
+        return None
+    unit = (unit or "").strip().lower()
+    if unit in ("hora", "horas", "h"):
+        return timedelta(hours=value)
+    if unit in ("dia", "dias", "d"):
+        return timedelta(days=value)
+    if unit in ("semana", "semanas", "w"):
+        return timedelta(weeks=value)
+    if unit in ("mes", "mês", "meses", "m"):
+        return timedelta(days=30 * value)
+    if unit in ("ano", "anos", "y"):
+        return timedelta(days=365 * value)
+    return None
+
+
+def client_ip() -> str:
+    forwarded = request.headers.get("X-Forwarded-For", "")
+    if forwarded:
+        return forwarded.split(",")[0].strip()[:64]
+    return (request.remote_addr or "")[:64]
+
+
+def _new_token() -> str:
+    return secrets.token_hex(24)
+
+
+def _attach_cookie(response, token: str):
+    secure = request.is_secure or bool(request.headers.get("X-Forwarded-Proto") == "https")
+    response.set_cookie(
+        COOKIE_NAME,
+        token,
+        max_age=60 * 60 * 24 * 400,
+        httponly=True,
+        samesite="Lax",
+        secure=secure,
+    )
+    return response
+
+
+def identify_device() -> DeviceBlock:
+    token = (request.cookies.get(COOKIE_NAME) or "").strip()
+    ip = client_ip()
+    device = None
+    if token:
+        device = DeviceBlock.query.filter_by(token=token).first()
+    if not device and ip:
+        device = (
+            DeviceBlock.query.filter(
+                DeviceBlock.ip == ip,
+                DeviceBlock.blocked_until > datetime.utcnow(),
+            )
+            .order_by(DeviceBlock.updated_at.desc())
+            .first()
+        )
+    if not device:
+        device = DeviceBlock(token=token or _new_token(), ip=ip, attempt_count=0, strike_level=0)
+        db.session.add(device)
+        db.session.commit()
+    elif ip and device.ip != ip:
+        device.ip = ip
+        db.session.commit()
+    return device
+
+
+def with_device_cookie(html_or_response, device: DeviceBlock):
+    response = make_response(html_or_response)
+    return _attach_cookie(response, device.token)
+
+
+def refresh_block_state(device: DeviceBlock) -> DeviceBlock:
+    if device.blocked_until and device.blocked_until <= datetime.utcnow():
+        device.blocked_until = None
+        device.attempt_count = 0
+        db.session.commit()
+    return device
+
+
+def register_attempt(device: DeviceBlock) -> DeviceBlock:
+    refresh_block_state(device)
+    if device.is_blocked():
+        return device
+    device.attempt_count = (device.attempt_count or 0) + 1
+    device.updated_at = datetime.utcnow()
+    if device.attempt_count >= ATTEMPT_LIMIT:
+        if device.strike_level >= 1:
+            device.strike_level = 2
+            device.blocked_until = datetime.utcnow() + timedelta(days=30)
+        else:
+            device.strike_level = 1
+            device.blocked_until = datetime.utcnow() + timedelta(days=1)
+        device.attempt_count = 0
+    db.session.commit()
+    return device
+
+
+def blocked_page_context(device: DeviceBlock) -> dict:
+    if device.strike_level >= 2:
+        return {
+            "title": "Acesso bloqueado",
+            "severe": True,
+        }
+    return {
+        "title": "Acesso negado",
+        "severe": False,
+    }

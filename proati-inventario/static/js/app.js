@@ -289,6 +289,75 @@ async function deleteUser(userId) {
   }
 }
 
+async function loadBlocks() {
+  if (!window.PROATI.isAdmin) return;
+  const body = $("blocks-body");
+  if (!body) return;
+  const data = await request("/api/bloqueios");
+  const rows = data.bloqueios || [];
+  if (!rows.length) {
+    body.innerHTML = `<tr><td colspan="5" class="empty">Nenhuma máquina bloqueada.</td></tr>`;
+    return;
+  }
+  body.innerHTML = rows
+    .map(
+      (row) => `<tr>
+        <td style="font-family:var(--mono);font-size:11px">${escapeHtml(row.token)}</td>
+        <td>${escapeHtml(row.ip)}</td>
+        <td><span class="badge ${row.strike_level >= 2 ? "badge-n" : "badge-yellow"}">${escapeHtml(row.level_label)}</span></td>
+        <td>${escapeHtml(row.blocked_until)}</td>
+        <td>
+          <div class="actions-stack">
+            <button class="btn-sm btn-warning" data-reduce="${row.id}" type="button">Alterar bloqueio</button>
+            <button class="btn-sm btn-danger" data-unblock="${row.id}" type="button">Remover bloqueio</button>
+          </div>
+        </td>
+      </tr>`
+    )
+    .join("");
+}
+
+function openBlockModal(id) {
+  $("block-id").value = id;
+  $("block-amount").value = "1";
+  $("block-unit").value = "dias";
+  $("block-modal").classList.add("open");
+}
+
+function closeBlockModal() {
+  const modal = $("block-modal");
+  if (modal) modal.classList.remove("open");
+}
+
+async function saveBlockDuration(event) {
+  event.preventDefault();
+  const id = $("block-id").value;
+  const amount = $("block-amount").value;
+  const unit = $("block-unit").value;
+  try {
+    await request(`/api/bloqueios/${id}/tempo`, {
+      method: "POST",
+      body: JSON.stringify({ amount, unit }),
+    });
+    showToast("✔ Tempo de bloqueio atualizado");
+    closeBlockModal();
+    await loadBlocks();
+  } catch (err) {
+    showToast("✘ " + err.message);
+  }
+}
+
+async function removeBlock(id) {
+  if (!confirm("Remover o bloqueio desta máquina?")) return;
+  try {
+    await request(`/api/bloqueios/${id}`, { method: "DELETE" });
+    showToast("✔ Bloqueio removido");
+    await loadBlocks();
+  } catch (err) {
+    showToast("✘ " + err.message);
+  }
+}
+
 function showView(tab) {
   state.tab = tab;
   document.querySelectorAll(".nav-tab").forEach((btn) => {
@@ -299,7 +368,7 @@ function showView(tab) {
   const adminView = $("view-admin");
   if (adminView) adminView.classList.toggle("active", isAdminTab);
   if (isAdminTab) {
-    loadUsers().catch((err) => showToast("✘ " + err.message));
+    Promise.all([loadUsers(), loadBlocks()]).catch((err) => showToast("✘ " + err.message));
     return;
   }
   $("tab-label").textContent = currentMeta().label.toUpperCase();
@@ -337,6 +406,26 @@ if (usersBody) {
     if (saveBtn) saveRole(saveBtn.dataset.saveRole);
     if (delBtn) deleteUser(delBtn.dataset.delUser);
     if (resetBtn) resetPassword(resetBtn.dataset.reset);
+  });
+}
+
+const blocksBody = $("blocks-body");
+if (blocksBody) {
+  blocksBody.addEventListener("click", (e) => {
+    const reduceBtn = e.target.closest("[data-reduce]");
+    const unblockBtn = e.target.closest("[data-unblock]");
+    if (reduceBtn) openBlockModal(reduceBtn.dataset.reduce);
+    if (unblockBtn) removeBlock(unblockBtn.dataset.unblock);
+  });
+}
+
+const blockForm = $("block-form");
+if (blockForm) {
+  blockForm.addEventListener("submit", saveBlockDuration);
+  $("block-modal-close").addEventListener("click", closeBlockModal);
+  $("block-modal-cancel").addEventListener("click", closeBlockModal);
+  $("block-modal").addEventListener("click", (e) => {
+    if (e.target.id === "block-modal") closeBlockModal();
   });
 }
 

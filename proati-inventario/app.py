@@ -1,5 +1,7 @@
 from functools import wraps
 
+from datetime import datetime
+
 from flask import (
     Flask,
     flash,
@@ -22,7 +24,15 @@ import config
 from core.layout_sig import bind as _layout_bind
 from email_check import verify_mailbox
 from extensions import db
-from models import Equipment, User, ensure_schema, init_default_data
+from models import DeviceBlock, Equipment, User, ensure_schema, init_default_data
+from device_guard import (
+    blocked_page_context,
+    identify_device,
+    parse_block_duration,
+    refresh_block_state,
+    register_attempt,
+    with_device_cookie,
+)
 
 app = Flask(__name__)
 app.config.from_object(config)
@@ -202,12 +212,29 @@ def force_password_reset():
         return redirect(url_for("set_password"))
 
 
+def blocked_response(device):
+    ctx = blocked_page_context(device)
+    return with_device_cookie(
+        render_template("bloqueio.html", **ctx),
+        device,
+    )
+
+
 @app.route("/register", methods=["GET", "POST"])
 def register():
     if current_user.is_authenticated:
         return redirect(url_for(home_for(current_user)))
 
+    device = identify_device()
+    refresh_block_state(device)
+    if device.is_blocked():
+        return blocked_response(device)
+
     if request.method == "POST":
+        device = register_attempt(device)
+        if device.is_blocked():
+            return blocked_response(device)
+
         username = request.form.get("username", "").strip()
         email = request.form.get("email", "").strip().lower()
         password = request.form.get("password", "")
@@ -242,9 +269,9 @@ def register():
                 db.session.add(user)
                 db.session.commit()
                 flash("Conta criada. Aguarde um administrador liberar o acesso.", "success")
-                return redirect(url_for("login"))
+                return with_device_cookie(redirect(url_for("login")), device)
 
-    return render_template("register.html")
+    return with_device_cookie(render_template("register.html"), device)
 
 
 @app.route("/set-password", methods=["GET", "POST"])
@@ -442,6 +469,48 @@ def api_delete_user(user_id):
         if admins <= 1:
             return jsonify({"erro": "Não é possível excluir o último administrador."}), 400
     db.session.delete(user)
+    db.session.commit()
+    return jsonify({"ok": True})
+
+
+@app.route("/api/bloqueios")
+@admin_required
+def api_list_blocks():
+    now = datetime.utcnow()
+    rows = (
+        DeviceBlock.query.filter(DeviceBlock.blocked_until.isnot(None))
+        .filter(DeviceBlock.blocked_until > now)
+        .order_by(DeviceBlock.blocked_until.desc())
+        .all()
+    )
+    return jsonify({"bloqueios": [row.to_dict() for row in rows]})
+
+
+@app.route("/api/bloqueios/<int:block_id>/tempo", methods=["POST"])
+@admin_required
+def api_set_block_duration(block_id):
+    row = db.session.get(DeviceBlock, block_id)
+    if not row:
+        return jsonify({"erro": "Bloqueio não encontrado."}), 404
+    data = request.get_json(silent=True) or {}
+    delta = parse_block_duration(data.get("amount"), data.get("unit"))
+    if not delta:
+        return jsonify({"erro": "Informe um número válido e a unidade de tempo."}), 400
+    row.blocked_until = datetime.utcnow() + delta
+    row.updated_at = datetime.utcnow()
+    db.session.commit()
+    return jsonify({"ok": True, "bloqueio": row.to_dict()})
+
+
+@app.route("/api/bloqueios/<int:block_id>", methods=["DELETE"])
+@admin_required
+def api_remove_block(block_id):
+    row = db.session.get(DeviceBlock, block_id)
+    if not row:
+        return jsonify({"erro": "Bloqueio não encontrado."}), 404
+    row.blocked_until = None
+    row.attempt_count = 0
+    row.updated_at = datetime.utcnow()
     db.session.commit()
     return jsonify({"ok": True})
 

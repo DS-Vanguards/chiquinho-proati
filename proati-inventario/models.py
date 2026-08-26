@@ -55,6 +55,34 @@ class User(UserMixin, db.Model):
         return self.role == "admin"
 
 
+class DeviceBlock(db.Model):
+    __tablename__ = "device_blocks"
+
+    id = db.Column(db.Integer, primary_key=True)
+    token = db.Column(db.String(64), unique=True, nullable=False, index=True)
+    ip = db.Column(db.String(64), default="", nullable=False, index=True)
+    attempt_count = db.Column(db.Integer, default=0, nullable=False)
+    strike_level = db.Column(db.Integer, default=0, nullable=False)
+    blocked_until = db.Column(db.DateTime, nullable=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    def is_blocked(self) -> bool:
+        return bool(self.blocked_until and self.blocked_until > datetime.utcnow())
+
+    def to_dict(self) -> dict:
+        until = self.blocked_until
+        return {
+            "id": self.id,
+            "token": self.token[:12],
+            "ip": self.ip or "—",
+            "attempt_count": self.attempt_count,
+            "strike_level": self.strike_level,
+            "blocked_until": until.strftime("%d/%m/%Y %H:%M") if until else "",
+            "level_label": "1 mês" if self.strike_level >= 2 else "1 dia",
+        }
+
+
 class Equipment(db.Model):
     __tablename__ = "equipment"
 

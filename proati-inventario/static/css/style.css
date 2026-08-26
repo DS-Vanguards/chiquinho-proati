@@ -317,8 +317,29 @@ table.schedule {
 .actions-cell { white-space: nowrap; }
 .admin-table-wrap {
   overflow-x: auto;
+  overflow-y: auto;
+  max-height: calc(42px + 4 * 68px);
   border: 1px solid var(--border);
   border-radius: var(--radius);
+  scrollbar-width: thin;
+  scrollbar-color: var(--border2) var(--surface2);
+}
+.admin-table-wrap::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+.admin-table-wrap::-webkit-scrollbar-thumb {
+  background: var(--border2);
+  border-radius: 8px;
+}
+.admin-table-wrap .resumo-table thead th {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  box-shadow: 0 1px 0 var(--border2);
+}
+.admin-table-wrap .resumo-table tbody tr {
+  height: 68px;
 }
 .cargo-cell,
 .actions-stack {
@@ -625,6 +646,12 @@ label {
   line-height: 1.7;
   max-width: 520px;
   margin: 0 auto;
+}
+
+.access-denied-panel a.admin-link {
+  color: var(--pastel-green);
+  font-weight: 700;
+  text-decoration: underline;
 }
 
 .site-ls {
