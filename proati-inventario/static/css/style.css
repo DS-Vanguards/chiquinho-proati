@@ -387,10 +387,15 @@ table.schedule {
   margin-bottom: 14px;
   padding-bottom: 8px;
   border-bottom: 1px solid var(--border);
+  position: relative;
+  z-index: 4;
 }
 .admin-users-head .save-btn {
   flex-shrink: 0;
   white-space: nowrap;
+  position: relative;
+  z-index: 5;
+  pointer-events: auto;
 }
 .section-title {
   font-family: var(--mono);
@@ -530,7 +535,7 @@ label {
   display: none;
   position: fixed;
   inset: 0;
-  z-index: 500;
+  z-index: 4000;
   background: rgba(0, 0, 0, .75);
   align-items: center;
   justify-content: center;
@@ -664,14 +669,6 @@ label {
   margin: 0 auto;
 }
 
-.restrito-logout {
-  margin-top: 28px;
-}
-.restrito-logout .reset-btn {
-  padding: 10px 28px;
-  font-size: 13px;
-  letter-spacing: 1.2px;
-}
 
 .access-denied-panel a.admin-link {
   color: var(--pastel-green);

@@ -34,7 +34,7 @@
   <div class="resumo-wrap">
     <div class="admin-users-head">
       <div class="section-title" style="margin:0;padding:0;border:none">Usuários e cargos</div>
-      <button class="save-btn" id="btn-add-user" type="button">+ ADICIONAR USUÁRIO</button>
+      <button class="save-btn" id="btn-add-user" type="button" onclick="openUserModal()">+ ADICIONAR USUÁRIO</button>
     </div>
     <p class="admin-hint">O cargo que você pode atribuir depende do seu nível: <strong>Admin</strong> só altera cargos abaixo; <strong>Super Admin</strong> pode definir Admin e Super Admin; <strong>VGS-Owner's</strong> define qualquer cargo. O cadastro pelo painel aceita qualquer e-mail.</p>
     <div class="table-wrap admin-table-wrap">
@@ -70,7 +70,8 @@
   </div>
 </div>
 {% endif %}
-
+{% endblock %}
+{% block modals %}
 <div class="modal-overlay" id="equip-modal">
   <div class="modal">
     <div class="modal-header">
@@ -113,6 +114,7 @@
       <input class="form-input" type="text" id="u-username" required minlength="3" maxlength="80" placeholder="Ex: Maiara">
       <label for="u-email">E-mail</label>
       <input class="form-input" type="email" id="u-email" required maxlength="120" placeholder="qualquer@email.com">
+      <p class="admin-hint" style="margin:4px 0 0">E-mails @al.educacao.sp.gov.br e @aluno.educacao.sp.gov.br entram como visualizador e veem o aviso de acesso restrito.</p>
       <label for="u-password">Senha</label>
       <input class="form-input" type="password" id="u-password" required minlength="6">
       <label for="u-confirm">Confirmar senha</label>

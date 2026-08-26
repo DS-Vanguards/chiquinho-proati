@@ -33,7 +33,7 @@ async function request(url, options = {}) {
 }
 
 function currentMeta() {
-  return TABS[state.tab];
+  return TABS[state.tab] || TABS.tablets;
 }
 
 function isMaintenance() {
@@ -303,9 +303,19 @@ async function deleteUser(userId) {
 }
 
 function openUserModal() {
-  $("user-form").reset();
-  $("u-role").value = "visualizador";
-  $("user-modal").classList.add("open");
+  const modal = $("user-modal");
+  const form = $("user-form");
+  if (!modal || !form) {
+    showToast("✘ Painel de cadastro indisponível");
+    return;
+  }
+  form.reset();
+  const role = $("u-role");
+  if (role) {
+    const hasViewer = Array.from(role.options).some((opt) => opt.value === "visualizador");
+    role.value = hasViewer ? "visualizador" : (role.options[0] ? role.options[0].value : "");
+  }
+  modal.classList.add("open");
 }
 
 function closeUserModal() {
@@ -476,11 +486,18 @@ if (blockForm) {
 
 const addUserBtn = $("btn-add-user");
 if (addUserBtn) {
-  addUserBtn.addEventListener("click", openUserModal);
+  addUserBtn.addEventListener("click", (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    openUserModal();
+  });
+}
+const userModal = $("user-modal");
+if (userModal) {
   $("user-modal-close").addEventListener("click", closeUserModal);
   $("user-modal-cancel").addEventListener("click", closeUserModal);
   $("user-form").addEventListener("submit", saveNewUser);
-  $("user-modal").addEventListener("click", (e) => {
+  userModal.addEventListener("click", (e) => {
     if (e.target.id === "user-modal") closeUserModal();
   });
 }

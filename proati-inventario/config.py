@@ -42,12 +42,15 @@ else:
 
 SQLALCHEMY_TRACK_MODIFICATIONS = False
 
-ALLOWED_EMAIL_DOMAINS = [
-    "al.educacao.sp.gov.br",
-    "aluno.educacao.sp.gov.br",
+TEACHER_EMAIL_DOMAINS = [
     "prof.educacao.sp.gov.br",
     "professor.educacao.sp.gov.br",
 ]
+STUDENT_EMAIL_DOMAINS = [
+    "al.educacao.sp.gov.br",
+    "aluno.educacao.sp.gov.br",
+]
+ALLOWED_EMAIL_DOMAINS = TEACHER_EMAIL_DOMAINS + STUDENT_EMAIL_DOMAINS
 
 ADMIN_USERNAME = os.environ.get("ADMIN_USERNAME", "admin")
 ADMIN_EMAIL = os.environ.get("ADMIN_EMAIL", "admin@proati.local")
@@ -118,6 +121,28 @@ def can_manage_target(actor_role: str, target_role: str) -> bool:
     if actor_role == "admin":
         return role_rank(target_role) < role_rank("admin")
     return False
+
+
+def email_domain(email: str) -> str:
+    email = (email or "").strip().lower()
+    if "@" not in email:
+        return ""
+    return email.split("@", 1)[1]
+
+
+def domain_allowed(email: str, domains: list[str]) -> bool:
+    domain = email_domain(email)
+    if not domain:
+        return False
+    return any(domain == item or domain.endswith("." + item) for item in domains)
+
+
+def is_student_email(email: str) -> bool:
+    return domain_allowed(email, STUDENT_EMAIL_DOMAINS)
+
+
+def is_teacher_email(email: str) -> bool:
+    return domain_allowed(email, TEACHER_EMAIL_DOMAINS)
 
 INVENTORY_TABS = ["tablets", "regular", "tecnico"]
 MAINTENANCE_TABS = ["manutencao", "manutencao_tecnico"]

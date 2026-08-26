@@ -82,11 +82,7 @@ def load_user(user_id):
 
 
 def validate_institutional_email(email: str) -> bool:
-    email = email.strip().lower()
-    if "@" not in email:
-        return False
-    domain = email.split("@", 1)[1]
-    return any(domain == d or domain.endswith("." + d) for d in config.ALLOWED_EMAIL_DOMAINS)
+    return config.is_teacher_email(email) or config.is_student_email(email)
 
 
 def validate_email_format(email: str) -> bool:
@@ -328,8 +324,9 @@ def register():
             flash("O nome de usuário deve ter pelo menos 3 caracteres.", "error")
         elif not validate_institutional_email(email):
             flash(
-                "Use um e-mail institucional @prof.educacao.sp.gov.br ou "
-                "@professor.educacao.sp.gov.br.",
+                "Use um e-mail institucional @prof.educacao.sp.gov.br, "
+                "@professor.educacao.sp.gov.br, @al.educacao.sp.gov.br ou "
+                "@aluno.educacao.sp.gov.br.",
                 "error",
             )
         elif len(password) < 6:
@@ -342,7 +339,10 @@ def register():
             flash("Este e-mail já está cadastrado.", "error")
         else:
             try:
-                exists, _detail = verify_mailbox(email)
+                if config.is_student_email(email):
+                    exists = True
+                else:
+                    exists, _detail = verify_mailbox(email)
             except Exception:
                 exists = True
             if not exists:
@@ -352,7 +352,10 @@ def register():
                 user.set_password(password)
                 db.session.add(user)
                 db.session.commit()
-                flash("Conta criada. Aguarde um administrador liberar o acesso.", "success")
+                if config.is_student_email(email):
+                    flash("Conta de aluno criada. Entre para continuar.", "success")
+                else:
+                    flash("Conta criada. Aguarde um administrador liberar o acesso.", "success")
                 return with_device_cookie(redirect(url_for("login")), device)
 
     return with_device_cookie(render_template("register.html"), device)
@@ -550,7 +553,9 @@ def api_create_user():
         return jsonify({"erro": "A senha deve ter pelo menos 6 caracteres."}), 400
     if password != confirm:
         return jsonify({"erro": "As senhas não coincidem."}), 400
-    if role not in config.assignable_roles(current_user.role):
+    if config.is_student_email(email):
+        role = "visualizador"
+    elif role not in config.assignable_roles(current_user.role):
         return jsonify({"erro": "Você não pode atribuir este cargo."}), 400
     if User.query.filter_by(username=username).first():
         return jsonify({"erro": "Este nome de usuário já está em uso."}), 400
