@@ -43,6 +43,8 @@ else:
 SQLALCHEMY_TRACK_MODIFICATIONS = False
 
 ALLOWED_EMAIL_DOMAINS = [
+    "al.educacao.sp.gov.br",
+    "aluno.educacao.sp.gov.br",
     "prof.educacao.sp.gov.br",
     "professor.educacao.sp.gov.br",
 ]

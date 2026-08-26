@@ -1,5 +1,6 @@
 from functools import wraps
 import os
+import re
 from datetime import datetime
 
 from flask import (
@@ -85,6 +86,11 @@ def validate_institutional_email(email: str) -> bool:
         return False
     domain = email.split("@", 1)[1]
     return any(domain == d or domain.endswith("." + d) for d in config.ALLOWED_EMAIL_DOMAINS)
+
+
+def validate_email_format(email: str) -> bool:
+    email = (email or "").strip().lower()
+    return bool(re.match(r"^[^@\s]+@[^@\s]+\.[^@\s]+$", email)) and len(email) <= 120
 
 
 def inventory_required(view):
@@ -472,6 +478,48 @@ def api_list_users():
             ]
         }
     )
+
+
+@app.route("/api/usuarios", methods=["POST"])
+@admin_required
+def api_create_user():
+    data = request.get_json(silent=True) or {}
+    username = (data.get("username") or "").strip()[:80]
+    email = (data.get("email") or "").strip().lower()[:120]
+    password = data.get("password") or ""
+    confirm = data.get("confirm_password") or ""
+    role = (data.get("role") or "visualizador").strip()
+
+    if len(username) < 3:
+        return jsonify({"erro": "O nome de usuário deve ter pelo menos 3 caracteres."}), 400
+    if not validate_email_format(email):
+        return jsonify({"erro": "Informe um e-mail válido."}), 400
+    if len(password) < 6:
+        return jsonify({"erro": "A senha deve ter pelo menos 6 caracteres."}), 400
+    if password != confirm:
+        return jsonify({"erro": "As senhas não coincidem."}), 400
+    if role not in config.ROLES:
+        return jsonify({"erro": "Cargo inválido."}), 400
+    if User.query.filter_by(username=username).first():
+        return jsonify({"erro": "Este nome de usuário já está em uso."}), 400
+    if User.query.filter_by(email=email).first():
+        return jsonify({"erro": "Este e-mail já está cadastrado."}), 400
+
+    user = User(username=username, email=email, role=role)
+    user.set_password(password)
+    db.session.add(user)
+    db.session.commit()
+    return jsonify(
+        {
+            "ok": True,
+            "usuario": {
+                "id": user.id,
+                "username": user.username,
+                "email": user.email,
+                "role": user.role,
+            },
+        }
+    ), 201
 
 
 @app.route("/api/usuarios/<int:user_id>/cargo", methods=["POST"])

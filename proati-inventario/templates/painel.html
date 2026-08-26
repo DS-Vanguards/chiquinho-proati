@@ -32,8 +32,11 @@
 {% if is_admin %}
 <div id="view-admin" class="view">
   <div class="resumo-wrap">
-    <div class="section-title">Usuários e cargos</div>
-    <p class="admin-hint">Novas contas entram como <strong>visualizador</strong>. Altere o cargo e clique em <strong>Salvar</strong> para liberar o painel. Use <strong>Redefinir senha</strong> para o professor entrar só com o usuário e criar uma senha nova.</p>
+    <div class="admin-users-head">
+      <div class="section-title" style="margin:0;padding:0;border:none">Usuários e cargos</div>
+      <button class="save-btn" id="btn-add-user" type="button">+ ADICIONAR USUÁRIO</button>
+    </div>
+    <p class="admin-hint">Novas contas entram como <strong>visualizador</strong>, salvo se você escolher outro cargo ao adicionar. O cadastro pelo painel aceita qualquer e-mail.</p>
     <div class="table-wrap admin-table-wrap">
     <table class="resumo-table">
       <thead>
@@ -99,6 +102,36 @@
 </div>
 
 {% if is_admin %}
+<div class="modal-overlay" id="user-modal">
+  <div class="modal">
+    <div class="modal-header">
+      <span class="modal-title">Adicionar usuário</span>
+      <button class="modal-close-btn" type="button" id="user-modal-close">✕</button>
+    </div>
+    <form class="modal-body" id="user-form">
+      <label for="u-username">Nome de usuário</label>
+      <input class="form-input" type="text" id="u-username" required minlength="3" maxlength="80" placeholder="Ex: Maiara">
+      <label for="u-email">E-mail</label>
+      <input class="form-input" type="email" id="u-email" required maxlength="120" placeholder="qualquer@email.com">
+      <label for="u-password">Senha</label>
+      <input class="form-input" type="password" id="u-password" required minlength="6">
+      <label for="u-confirm">Confirmar senha</label>
+      <input class="form-input" type="password" id="u-confirm" required minlength="6">
+      <label for="u-role">Cargo</label>
+      <select class="form-input" id="u-role">
+        {% for role in ROLES %}
+        <option value="{{ role }}" {% if role == "visualizador" %}selected{% endif %}>
+          {{ {"admin": "Admin", "proati": "Proati", "coordenador": "Coordenador", "visualizador": "Visualizador"}.get(role, role) }}
+        </option>
+        {% endfor %}
+      </select>
+    </form>
+    <div class="modal-footer">
+      <button class="close-footer-btn" type="button" id="user-modal-cancel">CANCELAR</button>
+      <button class="print-btn" type="submit" form="user-form">CADASTRAR</button>
+    </div>
+  </div>
+</div>
 <div class="modal-overlay" id="block-modal">
   <div class="modal">
     <div class="modal-header">

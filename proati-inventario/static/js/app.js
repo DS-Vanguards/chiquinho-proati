@@ -289,6 +289,38 @@ async function deleteUser(userId) {
   }
 }
 
+function openUserModal() {
+  $("user-form").reset();
+  $("u-role").value = "visualizador";
+  $("user-modal").classList.add("open");
+}
+
+function closeUserModal() {
+  const modal = $("user-modal");
+  if (modal) modal.classList.remove("open");
+}
+
+async function saveNewUser(event) {
+  event.preventDefault();
+  try {
+    await request("/api/usuarios", {
+      method: "POST",
+      body: JSON.stringify({
+        username: $("u-username").value.trim(),
+        email: $("u-email").value.trim(),
+        password: $("u-password").value,
+        confirm_password: $("u-confirm").value,
+        role: $("u-role").value,
+      }),
+    });
+    showToast("✔ Usuário adicionado");
+    closeUserModal();
+    await loadUsers();
+  } catch (err) {
+    showToast("✘ " + err.message);
+  }
+}
+
 async function loadBlocks() {
   if (!window.PROATI.isAdmin) return;
   const body = $("blocks-body");
@@ -426,6 +458,17 @@ if (blockForm) {
   $("block-modal-cancel").addEventListener("click", closeBlockModal);
   $("block-modal").addEventListener("click", (e) => {
     if (e.target.id === "block-modal") closeBlockModal();
+  });
+}
+
+const addUserBtn = $("btn-add-user");
+if (addUserBtn) {
+  addUserBtn.addEventListener("click", openUserModal);
+  $("user-modal-close").addEventListener("click", closeUserModal);
+  $("user-modal-cancel").addEventListener("click", closeUserModal);
+  $("user-form").addEventListener("submit", saveNewUser);
+  $("user-modal").addEventListener("click", (e) => {
+    if (e.target.id === "user-modal") closeUserModal();
   });
 }
 
