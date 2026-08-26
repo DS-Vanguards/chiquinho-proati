@@ -17,7 +17,7 @@ MICROSOFT_DOMAINS = {
     "live.com.br",
     "msn.com",
 }
-SMTP_TIMEOUT = 8
+SMTP_TIMEOUT = 3
 
 
 def normalize_email(email: str) -> str:
@@ -91,7 +91,7 @@ def verify_mailbox(email: str) -> tuple[bool, str]:
 
     provider = email_provider(domain, mx_hosts)
     last_code = None
-    for host in mx_hosts[:2]:
+    for host in mx_hosts[:1]:
         last_code = _rcpt_status(host, email)
         if last_code is not None:
             break

@@ -18,11 +18,19 @@ class User(UserMixin, db.Model):
     password_hash = db.Column(db.String(256), nullable=False)
     role = db.Column(db.String(20), default="visualizador", nullable=False)
     must_reset_password = db.Column(db.Boolean, default=False, nullable=False)
+    session_version = db.Column(db.Integer, default=0, nullable=False)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    def get_id(self):
+        return f"{self.id}:{int(self.session_version or 0)}"
+
+    def bump_session(self) -> None:
+        self.session_version = int(self.session_version or 0) + 1
 
     def set_password(self, password: str) -> None:
         self.password_hash = generate_password_hash(password)
         self.must_reset_password = False
+        self.bump_session()
 
     def check_password(self, password: str) -> bool:
         if not self.password_hash:
@@ -125,6 +133,11 @@ def ensure_schema():
             )
         )
         db.session.commit()
+    if "session_version" not in columns:
+        db.session.execute(
+            text("ALTER TABLE users ADD COLUMN session_version INTEGER NOT NULL DEFAULT 0")
+        )
+        db.session.commit()
 
     if "equipment" in inspector.get_table_names():
         db.session.execute(
@@ -151,7 +164,7 @@ def init_default_data():
         admin = User.query.filter(
             (User.username == config.ADMIN_USERNAME) | (User.email == config.ADMIN_EMAIL)
         ).first()
-        if not admin:
+        if not admin and config.ADMIN_PASSWORD:
             admin = User(
                 username=config.ADMIN_USERNAME,
                 email=config.ADMIN_EMAIL,

@@ -1,5 +1,5 @@
 from functools import wraps
-
+import os
 from datetime import datetime
 
 from flask import (
@@ -18,12 +18,22 @@ from flask_login import (
     login_user,
     logout_user,
 )
+from flask_wtf.csrf import CSRFProtect, generate_csrf
 from sqlalchemy.exc import IntegrityError
 
 import config
 from core.layout_sig import bind as _layout_bind
 from email_check import verify_mailbox
 from extensions import db
+from hardening import (
+    LOGIN_ERROR,
+    add_security_headers,
+    apply_proxy_fix,
+    clear_password_reset,
+    pending_reset_user_id,
+    start_password_reset,
+    too_many_requests,
+)
 from models import DeviceBlock, Equipment, User, ensure_schema, init_default_data
 from device_guard import (
     blocked_page_context,
@@ -36,6 +46,8 @@ from device_guard import (
 
 app = Flask(__name__)
 app.config.from_object(config)
+apply_proxy_fix(app)
+CSRFProtect(app)
 _layout_bind(app)
 
 db.init_app(app)
@@ -52,7 +64,19 @@ with app.app_context():
 
 @login_manager.user_loader
 def load_user(user_id):
-    return db.session.get(User, int(user_id))
+    raw = str(user_id or "")
+    try:
+        if ":" in raw:
+            uid, version = raw.split(":", 1)
+            user = db.session.get(User, int(uid))
+            if user is None:
+                return None
+            if str(int(user.session_version or 0)) != str(version):
+                return None
+            return user
+        return db.session.get(User, int(raw))
+    except (TypeError, ValueError):
+        return None
 
 
 def validate_institutional_email(email: str) -> bool:
@@ -158,7 +182,13 @@ def inject_globals():
         "TABLET_MODEL": config.TABLET_MODEL,
         "INVENTORY_STATUSES": config.INVENTORY_STATUSES,
         "MAINTENANCE_STATUSES": config.MAINTENANCE_STATUSES,
+        "csrf_token": generate_csrf,
     }
+
+
+@app.after_request
+def set_security_headers(response):
+    return add_security_headers(response)
 
 
 @app.route("/")
@@ -174,6 +204,10 @@ def login():
         return redirect(url_for(home_for(current_user)))
 
     if request.method == "POST":
+        if too_many_requests("login", 8, 15 * 60):
+            flash("Muitas tentativas. Aguarde alguns minutos e tente de novo.", "error")
+            return render_template("login.html")
+
         identifier = request.form.get("identifier", "").strip()
         password = request.form.get("password", "")
         user = User.query.filter(
@@ -181,14 +215,15 @@ def login():
         ).first()
 
         if not user:
-            flash("Usuário ou e-mail não encontrado.", "error")
+            flash(LOGIN_ERROR, "error")
             return render_template("login.html")
 
         if user.must_reset_password or not user.password_hash:
+            start_password_reset(user.id)
             return render_template("set_password.html", user=user, forced=True)
 
         if not password or not user.check_password(password):
-            flash("Usuário ou senha incorretos.", "error")
+            flash(LOGIN_ERROR, "error")
             return render_template("login.html")
 
         login_user(user)
@@ -225,18 +260,23 @@ def register():
     if current_user.is_authenticated:
         return redirect(url_for(home_for(current_user)))
 
-    device = identify_device()
+    device = identify_device(persist=False)
     refresh_block_state(device)
     if device.is_blocked():
         return blocked_response(device)
 
     if request.method == "POST":
+        if too_many_requests("register", 8, 15 * 60):
+            flash("Muitas tentativas. Aguarde alguns minutos e tente de novo.", "error")
+            return with_device_cookie(render_template("register.html"), device)
+
+        device = identify_device(persist=True)
         device = register_attempt(device)
         if device.is_blocked():
             return blocked_response(device)
 
-        username = request.form.get("username", "").strip()
-        email = request.form.get("email", "").strip().lower()
+        username = request.form.get("username", "").strip()[:80]
+        email = request.form.get("email", "").strip().lower()[:120]
         password = request.form.get("password", "")
         confirm = request.form.get("confirm_password", "")
 
@@ -276,15 +316,27 @@ def register():
 
 @app.route("/set-password", methods=["GET", "POST"])
 def set_password():
-    user = None
-    if request.method == "POST":
-        user_id = request.form.get("user_id", type=int)
-        password = request.form.get("password", "")
-        confirm = request.form.get("confirm_password", "")
-        user = db.session.get(User, user_id) if user_id else None
+    def resolve_reset_user():
+        if current_user.is_authenticated and getattr(current_user, "must_reset_password", False):
+            return current_user
+        uid = pending_reset_user_id()
+        if not uid:
+            return None
+        user = db.session.get(User, uid)
         if not user or not (user.must_reset_password or not user.password_hash):
+            return None
+        return user
+
+    user = resolve_reset_user()
+    if request.method == "POST":
+        if too_many_requests("set-password", 8, 15 * 60):
+            flash("Muitas tentativas. Aguarde alguns minutos e tente de novo.", "error")
+            return redirect(url_for("login"))
+        if not user:
             flash("Esta conta não está aguardando redefinição de senha.", "error")
             return redirect(url_for("login"))
+        password = request.form.get("password", "")
+        confirm = request.form.get("confirm_password", "")
         if len(password) < 6:
             flash("A senha deve ter pelo menos 6 caracteres.", "error")
             return render_template("set_password.html", user=user, forced=True)
@@ -293,16 +345,17 @@ def set_password():
             return render_template("set_password.html", user=user, forced=True)
         user.set_password(password)
         db.session.commit()
+        clear_password_reset()
         login_user(user)
         flash("Senha definida com sucesso.", "success")
         return redirect(url_for(home_for(user)))
 
-    if current_user.is_authenticated and current_user.must_reset_password:
-        return render_template("set_password.html", user=current_user, forced=True)
+    if user:
+        return render_template("set_password.html", user=user, forced=True)
     return redirect(url_for("login"))
 
 
-@app.route("/logout")
+@app.route("/logout", methods=["POST"])
 @login_required
 def logout():
     logout_user()
@@ -452,6 +505,7 @@ def api_reset_password(user_id):
     if not user:
         return jsonify({"erro": "Usuário não encontrado."}), 404
     user.must_reset_password = True
+    user.bump_session()
     db.session.commit()
     return jsonify({"ok": True})
 
@@ -516,4 +570,8 @@ def api_remove_block(block_id):
 
 
 if __name__ == "__main__":
-    app.run(debug=True)
+    app.run(
+        debug=os.environ.get("FLASK_DEBUG", "").lower() in ("1", "true", "yes"),
+        host="127.0.0.1",
+        port=5000,
+    )

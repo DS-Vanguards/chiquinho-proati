@@ -148,7 +148,8 @@ body {
   display: inline-block;
 }
 
-.reset-btn:hover { border-color: #f08080; background: #220d0d; }
+.logout-form { display: inline; margin: 0; }
+button.reset-btn { font: inherit; }
 
 .view { display: none; animation: fadeIn .2s ease; }
 .view.active { display: block; }

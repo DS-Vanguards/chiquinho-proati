@@ -4,6 +4,7 @@ import secrets
 from flask import make_response, request
 
 from extensions import db
+from hardening import client_ip
 from models import DeviceBlock
 
 COOKIE_NAME = "dvg_machine"
@@ -31,13 +32,6 @@ def parse_block_duration(amount, unit: str):
     return None
 
 
-def client_ip() -> str:
-    forwarded = request.headers.get("X-Forwarded-For", "")
-    if forwarded:
-        return forwarded.split(",")[0].strip()[:64]
-    return (request.remote_addr or "")[:64]
-
-
 def _new_token() -> str:
     return secrets.token_hex(24)
 
@@ -55,7 +49,7 @@ def _attach_cookie(response, token: str):
     return response
 
 
-def identify_device() -> DeviceBlock:
+def identify_device(persist: bool = True) -> DeviceBlock:
     token = (request.cookies.get(COOKIE_NAME) or "").strip()
     ip = client_ip()
     device = None
@@ -72,9 +66,10 @@ def identify_device() -> DeviceBlock:
         )
     if not device:
         device = DeviceBlock(token=token or _new_token(), ip=ip, attempt_count=0, strike_level=0)
-        db.session.add(device)
-        db.session.commit()
-    elif ip and device.ip != ip:
+        if persist:
+            db.session.add(device)
+            db.session.commit()
+    elif persist and ip and device.ip != ip:
         device.ip = ip
         db.session.commit()
     return device
@@ -86,6 +81,8 @@ def with_device_cookie(html_or_response, device: DeviceBlock):
 
 
 def refresh_block_state(device: DeviceBlock) -> DeviceBlock:
+    if device.id is None:
+        return device
     if device.blocked_until and device.blocked_until <= datetime.utcnow():
         device.blocked_until = None
         device.attempt_count = 0
@@ -94,6 +91,9 @@ def refresh_block_state(device: DeviceBlock) -> DeviceBlock:
 
 
 def register_attempt(device: DeviceBlock) -> DeviceBlock:
+    if device.id is None:
+        db.session.add(device)
+        db.session.commit()
     refresh_block_state(device)
     if device.is_blocked():
         return device
