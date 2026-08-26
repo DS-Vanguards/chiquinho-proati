@@ -10,6 +10,7 @@ from flask import (
     redirect,
     render_template,
     request,
+    send_from_directory,
     url_for,
 )
 from flask_login import (
@@ -204,6 +205,15 @@ def index():
     return redirect(url_for("login"))
 
 
+@app.route("/favicon.ico")
+def favicon():
+    return send_from_directory(
+        os.path.join(app.root_path, "static"),
+        "favicon.ico",
+        mimetype="image/vnd.microsoft.icon",
+    )
+
+
 @app.route("/login", methods=["GET", "POST"])
 def login():
     if current_user.is_authenticated:
@@ -247,6 +257,7 @@ def force_password_reset():
         "logout",
         "login",
         "register",
+        "favicon",
     ):
         return
     if current_user.is_authenticated and getattr(current_user, "must_reset_password", False):
