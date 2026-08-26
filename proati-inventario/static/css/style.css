@@ -302,6 +302,8 @@ table.schedule {
 .badge-t { background: var(--pastel-blue-bg); color: var(--pastel-blue); border: 1px solid rgba(168, 200, 240, .2); }
 .badge-n { background: rgba(240, 196, 168, .08); color: var(--pastel-orange); border: 1px solid rgba(240, 196, 168, .2); }
 .badge-yellow { background: var(--pastel-yellow-bg); color: var(--pastel-yellow); border: 1px solid rgba(240, 230, 168, .2); }
+.badge-vgs_owner { background: var(--pastel-yellow-bg); color: var(--pastel-yellow); border: 1px solid rgba(240, 230, 168, .35); }
+.badge-super_admin { background: var(--pastel-orange-bg, rgba(240, 196, 168, .12)); color: var(--pastel-orange); border: 1px solid rgba(240, 196, 168, .3); }
 .badge-admin { background: var(--pastel-green-bg); color: var(--pastel-green); border: 1px solid rgba(168, 230, 200, .2); }
 .badge-proati { background: var(--pastel-purple-bg); color: var(--pastel-purple); border: 1px solid rgba(200, 168, 240, .2); }
 .badge-coordenador { background: var(--pastel-blue-bg); color: var(--pastel-blue); border: 1px solid rgba(168, 200, 240, .2); }

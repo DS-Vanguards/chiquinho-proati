@@ -60,7 +60,64 @@ SMTP_PASSWORD = os.environ.get("SMTP_PASSWORD", "")
 SMTP_FROM = os.environ.get("SMTP_FROM", "") or SMTP_USER
 SMTP_USE_TLS = os.environ.get("SMTP_USE_TLS", "true").lower() == "true"
 
-ROLES = ["admin", "proati", "coordenador", "visualizador"]
+ROLES = [
+    "vgs_owner",
+    "super_admin",
+    "admin",
+    "proati",
+    "coordenador",
+    "visualizador",
+]
+
+ROLE_LABELS = {
+    "vgs_owner": "VGS-Owner's",
+    "super_admin": "Super Admin",
+    "admin": "Admin",
+    "proati": "Proati",
+    "coordenador": "Coordenador",
+    "visualizador": "Visualizador",
+}
+
+ROLE_RANK = {
+    "vgs_owner": 50,
+    "super_admin": 40,
+    "admin": 30,
+    "proati": 20,
+    "coordenador": 10,
+    "visualizador": 0,
+}
+
+STAFF_ROLES = ("vgs_owner", "super_admin", "admin")
+EDITOR_ROLES = ("vgs_owner", "super_admin", "admin", "proati")
+VIEWER_ROLES = ("vgs_owner", "super_admin", "admin", "proati", "coordenador")
+
+
+def role_label(role: str) -> str:
+    return ROLE_LABELS.get(role, role)
+
+
+def role_rank(role: str) -> int:
+    return ROLE_RANK.get(role, -1)
+
+
+def assignable_roles(actor_role: str) -> list[str]:
+    if actor_role == "vgs_owner":
+        return list(ROLES)
+    if actor_role == "super_admin":
+        return [role for role in ROLES if role != "vgs_owner"]
+    if actor_role == "admin":
+        return [role for role in ROLES if role_rank(role) < role_rank("admin")]
+    return []
+
+
+def can_manage_target(actor_role: str, target_role: str) -> bool:
+    if actor_role == "vgs_owner":
+        return True
+    if actor_role == "super_admin":
+        return role_rank(target_role) <= role_rank("super_admin")
+    if actor_role == "admin":
+        return role_rank(target_role) < role_rank("admin")
+    return False
 
 INVENTORY_TABS = ["tablets", "regular", "tecnico"]
 MAINTENANCE_TABS = ["manutencao", "manutencao_tecnico"]

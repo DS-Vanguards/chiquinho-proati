@@ -132,6 +132,28 @@ def admin_required(view):
     return wrapped
 
 
+def last_vgs_owner(user) -> bool:
+    if user.role != "vgs_owner":
+        return False
+    return User.query.filter_by(role="vgs_owner").count() <= 1
+
+
+def manage_user_error(target, *, action: str):
+    if target.id == current_user.id:
+        if action == "excluir":
+            return "Você não pode excluir a própria conta."
+        if action == "cargo":
+            return "Você não pode alterar o próprio cargo."
+        return None
+    if not config.can_manage_target(current_user.role, target.role):
+        if current_user.role == "admin":
+            return "Admin só pode gerenciar cargos abaixo de Admin."
+        if current_user.role == "super_admin":
+            return "Super Admin não pode gerenciar VGS-Owner's."
+        return "Você não pode gerenciar este usuário."
+    return None
+
+
 def home_for(user) -> str:
     if user.is_visualizador:
         return "restrito"
@@ -183,8 +205,13 @@ def normalize_payload(tab: str, data: dict, existing=None):
 
 @app.context_processor
 def inject_globals():
+    assignable = []
+    if getattr(current_user, "is_authenticated", False):
+        assignable = config.assignable_roles(current_user.role)
     return {
         "ROLES": config.ROLES,
+        "ROLE_LABELS": config.ROLE_LABELS,
+        "ASSIGNABLE_ROLES": assignable,
         "ALLOWED_EMAIL_DOMAINS": config.ALLOWED_EMAIL_DOMAINS,
         "TABLET_MODEL": config.TABLET_MODEL,
         "INVENTORY_STATUSES": config.INVENTORY_STATUSES,
@@ -394,7 +421,7 @@ def painel():
     return render_template(
         "painel.html",
         can_edit=current_user.can_edit_inventory(),
-        is_admin=current_user.is_admin,
+        is_admin=current_user.can_manage_users(),
     )
 
 
@@ -474,8 +501,10 @@ def api_delete_equipment(item_id):
 @admin_required
 def api_list_users():
     users = User.query.order_by(User.created_at.asc()).all()
+    assignable = config.assignable_roles(current_user.role)
     return jsonify(
         {
+            "assignable_roles": assignable,
             "usuarios": [
                 {
                     "id": user.id,
@@ -484,6 +513,18 @@ def api_list_users():
                     "role": user.role,
                     "is_self": user.id == current_user.id,
                     "must_reset_password": bool(user.must_reset_password),
+                    "can_edit_role": (
+                        user.id != current_user.id
+                        and config.can_manage_target(current_user.role, user.role)
+                    ),
+                    "can_manage": (
+                        user.id != current_user.id
+                        and config.can_manage_target(current_user.role, user.role)
+                    ),
+                    "can_reset": (
+                        user.id == current_user.id
+                        or config.can_manage_target(current_user.role, user.role)
+                    ),
                 }
                 for user in users
             ]
@@ -509,8 +550,8 @@ def api_create_user():
         return jsonify({"erro": "A senha deve ter pelo menos 6 caracteres."}), 400
     if password != confirm:
         return jsonify({"erro": "As senhas não coincidem."}), 400
-    if role not in config.ROLES:
-        return jsonify({"erro": "Cargo inválido."}), 400
+    if role not in config.assignable_roles(current_user.role):
+        return jsonify({"erro": "Você não pode atribuir este cargo."}), 400
     if User.query.filter_by(username=username).first():
         return jsonify({"erro": "Este nome de usuário já está em uso."}), 400
     if User.query.filter_by(email=email).first():
@@ -539,18 +580,17 @@ def api_update_role(user_id):
     user = db.session.get(User, user_id)
     if not user:
         return jsonify({"erro": "Usuário não encontrado."}), 404
-    if user.id == current_user.id:
-        return jsonify({"erro": "Você não pode alterar o próprio cargo."}), 400
+    blocked = manage_user_error(user, action="cargo")
+    if blocked:
+        return jsonify({"erro": blocked}), 400
 
     data = request.get_json(silent=True) or {}
     role = (data.get("role") or "").strip()
-    if role not in config.ROLES:
-        return jsonify({"erro": "Cargo inválido."}), 400
+    if role not in config.assignable_roles(current_user.role):
+        return jsonify({"erro": "Você não pode atribuir este cargo."}), 400
 
-    if user.role == "admin" and role != "admin":
-        admins = User.query.filter_by(role="admin").count()
-        if admins <= 1:
-            return jsonify({"erro": "Não é possível remover o último administrador."}), 400
+    if last_vgs_owner(user) and role != "vgs_owner":
+        return jsonify({"erro": "Não é possível remover o último VGS-Owner's."}), 400
 
     user.role = role
     db.session.commit()
@@ -563,6 +603,9 @@ def api_reset_password(user_id):
     user = db.session.get(User, user_id)
     if not user:
         return jsonify({"erro": "Usuário não encontrado."}), 404
+    blocked = manage_user_error(user, action="senha")
+    if blocked:
+        return jsonify({"erro": blocked}), 400
     user.must_reset_password = True
     user.bump_session()
     db.session.commit()
@@ -575,12 +618,11 @@ def api_delete_user(user_id):
     user = db.session.get(User, user_id)
     if not user:
         return jsonify({"erro": "Usuário não encontrado."}), 404
-    if user.id == current_user.id:
-        return jsonify({"erro": "Você não pode excluir a própria conta."}), 400
-    if user.role == "admin":
-        admins = User.query.filter_by(role="admin").count()
-        if admins <= 1:
-            return jsonify({"erro": "Não é possível excluir o último administrador."}), 400
+    blocked = manage_user_error(user, action="excluir")
+    if blocked:
+        return jsonify({"erro": blocked}), 400
+    if last_vgs_owner(user):
+        return jsonify({"erro": "Não é possível excluir o último VGS-Owner's."}), 400
     db.session.delete(user)
     db.session.commit()
     return jsonify({"ok": True})

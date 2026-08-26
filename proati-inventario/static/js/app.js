@@ -206,7 +206,11 @@ async function removeEquipment(id) {
 }
 
 function roleLabel(role) {
+  const labels = window.PROATI.roleLabels || {};
+  if (labels[role]) return labels[role];
   const map = {
+    vgs_owner: "VGS-Owner's",
+    super_admin: "Super Admin",
     admin: "Admin",
     proati: "Proati",
     coordenador: "Coordenador",
@@ -223,28 +227,37 @@ async function loadUsers() {
     body.innerHTML = `<tr><td colspan="4" class="empty">Nenhum usuário.</td></tr>`;
     return;
   }
+  const assignable = data.assignable_roles || window.PROATI.roles || [];
   body.innerHTML = data.usuarios
     .map((user) => {
-      const options = window.PROATI.roles
+      const options = assignable
         .map((r) => `<option value="${r}" ${r === user.role ? "selected" : ""}>${roleLabel(r)}</option>`)
         .join("");
       const pending = user.must_reset_password
         ? `<span class="badge badge-yellow">Aguardando senha</span>`
         : "";
-      const cargo = user.is_self
-        ? `<span class="badge badge-${user.role}">${roleLabel(user.role)}</span><span class="text-muted">Sua conta</span>`
-        : `<select class="form-input inline-select" data-role="${user.id}">${options}</select>
+      let cargo;
+      if (user.is_self) {
+        cargo = `<span class="badge badge-${user.role}">${roleLabel(user.role)}</span><span class="text-muted">Sua conta</span>`;
+      } else if (user.can_edit_role) {
+        cargo = `<select class="form-input inline-select" data-role="${user.id}">${options}</select>
            <button class="btn-sm btn-save-role" data-save-role="${user.id}" type="button">Salvar</button>`;
-      const delBtn = user.is_self
-        ? ""
-        : `<button class="btn-sm btn-danger" data-del-user="${user.id}" type="button">Excluir conta</button>`;
+      } else {
+        cargo = `<span class="badge badge-${user.role}">${roleLabel(user.role)}</span>`;
+      }
+      const resetBtn = user.can_reset
+        ? `<button class="btn-sm btn-warning" data-reset="${user.id}" type="button">Redefinir senha</button>`
+        : "";
+      const delBtn = user.can_manage
+        ? `<button class="btn-sm btn-danger" data-del-user="${user.id}" type="button">Excluir conta</button>`
+        : "";
       return `<tr>
         <td><strong>${escapeHtml(user.username)}</strong> ${pending}</td>
         <td>${escapeHtml(user.email)}</td>
         <td><div class="cargo-cell">${cargo}</div></td>
         <td>
           <div class="actions-stack">
-            <button class="btn-sm btn-warning" data-reset="${user.id}" type="button">Redefinir senha</button>
+            ${resetBtn}
             ${delBtn}
           </div>
         </td>

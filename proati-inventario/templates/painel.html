@@ -36,7 +36,7 @@
       <div class="section-title" style="margin:0;padding:0;border:none">Usuários e cargos</div>
       <button class="save-btn" id="btn-add-user" type="button">+ ADICIONAR USUÁRIO</button>
     </div>
-    <p class="admin-hint">Novas contas entram como <strong>visualizador</strong>, salvo se você escolher outro cargo ao adicionar. O cadastro pelo painel aceita qualquer e-mail.</p>
+    <p class="admin-hint">O cargo que você pode atribuir depende do seu nível: <strong>Admin</strong> só altera cargos abaixo; <strong>Super Admin</strong> pode definir Admin e Super Admin; <strong>VGS-Owner's</strong> define qualquer cargo. O cadastro pelo painel aceita qualquer e-mail.</p>
     <div class="table-wrap admin-table-wrap">
     <table class="resumo-table">
       <thead>
@@ -119,9 +119,9 @@
       <input class="form-input" type="password" id="u-confirm" required minlength="6">
       <label for="u-role">Cargo</label>
       <select class="form-input" id="u-role">
-        {% for role in ROLES %}
+        {% for role in ASSIGNABLE_ROLES %}
         <option value="{{ role }}" {% if role == "visualizador" %}selected{% endif %}>
-          {{ {"admin": "Admin", "proati": "Proati", "coordenador": "Coordenador", "visualizador": "Visualizador"}.get(role, role) }}
+          {{ ROLE_LABELS.get(role, role) }}
         </option>
         {% endfor %}
       </select>
@@ -167,7 +167,8 @@
     tabletModel: {{ TABLET_MODEL | tojson }},
     inventoryStatuses: {{ INVENTORY_STATUSES | tojson }},
     maintenanceStatuses: {{ MAINTENANCE_STATUSES | tojson }},
-    roles: {{ ROLES | tojson }}
+    roles: {{ ASSIGNABLE_ROLES | tojson }},
+    roleLabels: {{ ROLE_LABELS | tojson }}
   };
 </script>
 <script src="{{ url_for('static', filename='js/app.js') }}"></script>

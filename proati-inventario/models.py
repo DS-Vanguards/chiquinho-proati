@@ -16,7 +16,7 @@ class User(UserMixin, db.Model):
     username = db.Column(db.String(80), unique=True, nullable=False)
     email = db.Column(db.String(120), unique=True, nullable=False)
     password_hash = db.Column(db.String(256), nullable=False)
-    role = db.Column(db.String(20), default="visualizador", nullable=False)
+    role = db.Column(db.String(32), default="visualizador", nullable=False)
     must_reset_password = db.Column(db.Boolean, default=False, nullable=False)
     session_version = db.Column(db.Integer, default=0, nullable=False)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
@@ -42,6 +42,14 @@ class User(UserMixin, db.Model):
         return self.role == "admin"
 
     @property
+    def is_super_admin(self) -> bool:
+        return self.role == "super_admin"
+
+    @property
+    def is_vgs_owner(self) -> bool:
+        return self.role == "vgs_owner"
+
+    @property
     def is_proati(self) -> bool:
         return self.role == "proati"
 
@@ -53,14 +61,18 @@ class User(UserMixin, db.Model):
     def is_visualizador(self) -> bool:
         return self.role == "visualizador"
 
+    @property
+    def role_label(self) -> str:
+        return config.role_label(self.role)
+
     def can_view_inventory(self) -> bool:
-        return self.role in ("admin", "proati", "coordenador")
+        return self.role in config.VIEWER_ROLES
 
     def can_edit_inventory(self) -> bool:
-        return self.role in ("admin", "proati")
+        return self.role in config.EDITOR_ROLES
 
     def can_manage_users(self) -> bool:
-        return self.role == "admin"
+        return self.role in config.STAFF_ROLES
 
 
 class DeviceBlock(db.Model):
@@ -161,18 +173,23 @@ def ensure_schema():
 
 def init_default_data():
     try:
-        admin = User.query.filter(
+        bootstrap = User.query.filter(
             (User.username == config.ADMIN_USERNAME) | (User.email == config.ADMIN_EMAIL)
         ).first()
-        if not admin and config.ADMIN_PASSWORD:
-            admin = User(
-                username=config.ADMIN_USERNAME,
-                email=config.ADMIN_EMAIL,
-                role="admin",
-            )
-            admin.set_password(config.ADMIN_PASSWORD)
-            db.session.add(admin)
-            db.session.commit()
+        has_owner = User.query.filter_by(role="vgs_owner").first() is not None
+        if not has_owner:
+            if bootstrap:
+                bootstrap.role = "vgs_owner"
+                db.session.commit()
+            elif config.ADMIN_PASSWORD:
+                owner = User(
+                    username=config.ADMIN_USERNAME,
+                    email=config.ADMIN_EMAIL,
+                    role="vgs_owner",
+                )
+                owner.set_password(config.ADMIN_PASSWORD)
+                db.session.add(owner)
+                db.session.commit()
     except IntegrityError:
         db.session.rollback()
     except Exception:
