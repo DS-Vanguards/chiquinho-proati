@@ -180,6 +180,10 @@ class Relatorio(db.Model):
             and self.status == "Em uso"
         )
         can_delete = bool(viewer and viewer.can_manage_users())
+        movimentos = [
+            movimento.to_dict()
+            for movimento in sorted(self.movimentos, key=lambda row: row.created_at or datetime.utcnow())
+        ]
         return {
             "id": self.id,
             "tab": self.tab,
@@ -197,6 +201,52 @@ class Relatorio(db.Model):
             "can_alter": can_alter,
             "can_finish": can_finish,
             "can_delete": can_delete,
+            "movimentos": movimentos,
+        }
+
+
+class RelatorioMovimento(db.Model):
+    __tablename__ = "relatorio_movimentos"
+
+    id = db.Column(db.Integer, primary_key=True)
+    relatorio_id = db.Column(
+        db.Integer,
+        db.ForeignKey("relatorios.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    tipo = db.Column(db.String(40), nullable=False)
+    quantidade = db.Column(db.Integer, nullable=True)
+    destinatario = db.Column(db.String(120), nullable=True)
+    sala_destino = db.Column(db.String(80), nullable=True)
+    usuario_id = db.Column(db.Integer, nullable=True)
+    usuario_nome = db.Column(db.String(80), nullable=False)
+    usuario_cargo = db.Column(db.String(40), nullable=False, default="")
+    detalhe = db.Column(db.String(240), nullable=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    relatorio = db.relationship(
+        "Relatorio",
+        backref=db.backref(
+            "movimentos",
+            cascade="all, delete-orphan",
+            passive_deletes=True,
+        ),
+    )
+
+    def to_dict(self) -> dict:
+        when = self.created_at
+        return {
+            "id": self.id,
+            "tipo": self.tipo,
+            "quantidade": self.quantidade,
+            "destinatario": self.destinatario or "",
+            "sala_destino": self.sala_destino or "",
+            "usuario_id": self.usuario_id,
+            "usuario": self.usuario_nome,
+            "cargo": self.usuario_cargo or "",
+            "detalhe": self.detalhe or "",
+            "quando": when.strftime("%d/%m/%Y %H:%M") if when else "",
         }
 
 
@@ -205,7 +255,17 @@ def purge_expired_relatorios() -> int:
     if "relatorios" not in inspector.get_table_names():
         return 0
     cutoff = datetime.utcnow() - timedelta(days=config.RELATORIO_TTL_DAYS)
-    deleted = Relatorio.query.filter(Relatorio.created_at < cutoff).delete(
+    expired_ids = [
+        item_id
+        for (item_id,) in db.session.query(Relatorio.id).filter(Relatorio.created_at < cutoff)
+    ]
+    if not expired_ids:
+        return 0
+    if "relatorio_movimentos" in inspector.get_table_names():
+        RelatorioMovimento.query.filter(
+            RelatorioMovimento.relatorio_id.in_(expired_ids)
+        ).delete(synchronize_session=False)
+    deleted = Relatorio.query.filter(Relatorio.id.in_(expired_ids)).delete(
         synchronize_session=False
     )
     if deleted:

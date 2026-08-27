@@ -125,16 +125,9 @@ function renderStats(items) {
     <div class="stat-item"><div class="stat-label">Danos periféricos</div><div class="stat-val blue">${peri}</div><div class="stat-unit">unidades</div></div>`;
 }
 
-function hasRowActions(item) {
-  if (isGestao()) {
-    return Boolean(item && (item.can_alter || item.can_finish || item.can_delete));
-  }
-  return Boolean(window.PROATI.canEdit);
-}
-
 function showActionsColumn() {
   if (isGestao()) {
-    return window.PROATI.isProfessor || window.PROATI.isAdmin || state.items.some(hasRowActions);
+    return true;
   }
   return Boolean(window.PROATI.canEdit);
 }
@@ -151,7 +144,7 @@ function renderHead() {
       <th>Destinatário</th>
       <th>Sala de destino</th>
       <th style="text-align:center">Status</th>
-      ${showActionsColumn() ? `<th style="width:220px">Ações</th>` : ""}
+      ${showActionsColumn() ? `<th style="width:280px">Ações</th>` : ""}
     </tr>`;
     return;
   }
@@ -178,12 +171,14 @@ function renderRows(items) {
     }
     body.innerHTML = items
       .map((item, idx) => {
-        const buttons = [];
+        const buttons = [
+          `<button class="btn-sm btn-more" data-details="${item.id}" type="button" title="Detalhes das alterações">︙</button>`,
+        ];
         if (item.can_alter) buttons.push(`<button class="btn-sm" data-alter="${item.id}" type="button">Alterar</button>`);
         if (item.can_finish) buttons.push(`<button class="btn-sm btn-ok" data-finish="${item.id}" type="button">Finalizado</button>`);
         if (item.can_delete) buttons.push(`<button class="btn-sm btn-danger" data-del-report="${item.id}" type="button">Excluir</button>`);
         const actions = actionsOn
-          ? `<td class="actions-cell">${buttons.join("") || "—"}</td>`
+          ? `<td class="actions-cell">${buttons.join("")}</td>`
           : "";
         return `<tr>
           <td class="td-num"><span class="num-badge">${idx + 1}</span></td>
@@ -459,6 +454,35 @@ async function removeReport(id) {
   } catch (err) {
     showToast("✘ " + err.message);
   }
+}
+
+function openDetailsModal(item) {
+  const list = $("report-details-list");
+  const moves = item.movimentos || [];
+  if (!moves.length) {
+    list.innerHTML = `<p class="admin-hint">Nenhuma alteração registrada neste relatório.</p>`;
+  } else {
+    list.innerHTML = moves
+      .map((move) => {
+        const extra = [];
+        if (move.quantidade) extra.push(`Quantidade: ${escapeHtml(move.quantidade)}`);
+        if (move.destinatario) extra.push(`Destinatário: ${escapeHtml(move.destinatario)}`);
+        if (move.sala_destino) extra.push(`Sala de destino: ${escapeHtml(move.sala_destino)}`);
+        if (move.detalhe) extra.push(escapeHtml(move.detalhe));
+        return `<div class="history-item">
+          <div class="history-when">${escapeHtml(move.quando)}</div>
+          <div class="history-title">${escapeHtml(move.tipo)}</div>
+          <div class="history-meta">Conta: ${escapeHtml(move.usuario)}${move.cargo ? " · " + escapeHtml(move.cargo) : ""}</div>
+          ${extra.length ? `<div class="history-meta">${extra.join("<br>")}</div>` : ""}
+        </div>`;
+      })
+      .join("");
+  }
+  $("report-details-modal").classList.add("open");
+}
+
+function closeDetailsModal() {
+  $("report-details-modal").classList.remove("open");
 }
 
 function roleLabel(role) {
@@ -778,11 +802,17 @@ $("equip-modal").addEventListener("click", (e) => {
 });
 $("equip-form").addEventListener("submit", saveEquipment);
 $("equip-body").addEventListener("click", (e) => {
+  const detailsBtn = e.target.closest("[data-details]");
   const editId = e.target.dataset.edit;
   const delId = e.target.dataset.del;
   const alterId = e.target.dataset.alter;
   const finishId = e.target.dataset.finish;
   const delReportId = e.target.dataset.delReport;
+  if (detailsBtn) {
+    const item = state.items.find((i) => String(i.id) === String(detailsBtn.dataset.details));
+    if (item) openDetailsModal(item);
+    return;
+  }
   if (editId) {
     const item = state.items.find((i) => String(i.id) === String(editId));
     if (item) openModal(item);
@@ -823,6 +853,12 @@ $("report-finish-modal").addEventListener("click", (e) => {
 $("finish-options").addEventListener("click", (e) => {
   const pick = e.target.closest("[data-finish]");
   if (pick) pickFinish(pick.dataset.finish);
+});
+
+$("report-details-close").addEventListener("click", closeDetailsModal);
+$("report-details-cancel").addEventListener("click", closeDetailsModal);
+$("report-details-modal").addEventListener("click", (e) => {
+  if (e.target.id === "report-details-modal") closeDetailsModal();
 });
 
 const usersBody = $("users-body");

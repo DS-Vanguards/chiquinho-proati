@@ -126,7 +126,7 @@
     </div>
     <form class="modal-body" id="report-form">
       <label for="r-modelos">Modelos</label>
-      <input class="form-input" id="r-modelos" maxlength="200" required placeholder="Ex: ThinkPad, Chromebook">
+      <input class="form-input" id="r-modelos" maxlength="200" required placeholder="Ex: Chromebook e Positivo">
       <label for="r-quantidade">Quantidade</label>
       <input class="form-input" id="r-quantidade" type="number" min="1" step="1" required placeholder="Ex: 10">
       <label for="r-sala">Sala</label>
@@ -193,6 +193,21 @@
     <div class="modal-footer">
       <button class="close-footer-btn" type="button" id="report-finish-cancel">CANCELAR</button>
       <button class="print-btn" type="button" id="report-finish-save">CONFIRMAR</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="report-details-modal">
+  <div class="modal">
+    <div class="modal-header">
+      <span class="modal-title">Detalhes das alterações</span>
+      <button class="modal-close-btn" type="button" id="report-details-close">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="history-list" id="report-details-list"></div>
+    </div>
+    <div class="modal-footer">
+      <button class="close-footer-btn" type="button" id="report-details-cancel">FECHAR</button>
     </div>
   </div>
 </div>

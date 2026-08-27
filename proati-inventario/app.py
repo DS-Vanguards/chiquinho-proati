@@ -40,6 +40,7 @@ from models import (
     DeviceBlock,
     Equipment,
     Relatorio,
+    RelatorioMovimento,
     User,
     ensure_schema,
     init_default_data,
@@ -202,6 +203,30 @@ def deny_report_write():
     if not current_user.can_write_reports():
         return jsonify({"erro": "Sem permissão para gerenciar relatórios."}), 403
     return None
+
+
+def log_relatorio_movimento(
+    item,
+    tipo,
+    *,
+    quantidade=None,
+    destinatario="",
+    sala_destino="",
+    detalhe="",
+):
+    db.session.add(
+        RelatorioMovimento(
+            relatorio_id=item.id,
+            tipo=tipo,
+            quantidade=quantidade,
+            destinatario=destinatario or None,
+            sala_destino=sala_destino or None,
+            usuario_id=current_user.id,
+            usuario_nome=current_user.username,
+            usuario_cargo=current_user.role_label,
+            detalhe=detalhe or None,
+        )
+    )
 
 
 def deny_tab(tab: str):
@@ -641,6 +666,13 @@ def api_create_report():
         alterado=False,
     )
     db.session.add(item)
+    db.session.flush()
+    log_relatorio_movimento(
+        item,
+        "Criado",
+        quantidade=quantidade,
+        detalhe=f"Sala {sala}",
+    )
     db.session.commit()
     return jsonify({"item": item.to_dict(viewer=current_user)}), 201
 
@@ -679,6 +711,14 @@ def api_alter_report(item_id):
     item.quantidade_atual = int(item.quantidade_atual) - quantidade
     item.alterado = True
     item.updated_at = datetime.utcnow()
+    log_relatorio_movimento(
+        item,
+        tipo,
+        quantidade=quantidade,
+        destinatario=destinatario,
+        sala_destino=sala_destino,
+        detalhe=f"Quantidade atual: {item.quantidade_atual}",
+    )
     db.session.commit()
     return jsonify({"item": item.to_dict(viewer=current_user)})
 
@@ -703,6 +743,15 @@ def api_finish_report(item_id):
     todos_entregues = bool(data.get("todos_entregues"))
     item.status = "Entregues" if todos_entregues else "Pendente"
     item.updated_at = datetime.utcnow()
+    log_relatorio_movimento(
+        item,
+        "Finalizado",
+        detalhe=(
+            "Todos foram entregues"
+            if todos_entregues
+            else "Ainda possui notebooks com o outro professor"
+        ),
+    )
     db.session.commit()
     return jsonify({"item": item.to_dict(viewer=current_user)})
 
