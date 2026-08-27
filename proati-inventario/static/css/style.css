@@ -24,6 +24,7 @@
   --mono: "Space Mono", monospace;
   --sans: "DM Sans", sans-serif;
   --radius: 8px;
+  --page-gutter: 28px;
 }
 
 body {
@@ -39,12 +40,13 @@ body {
 .page-main {
   flex: 1;
   width: 100%;
+  padding: 0 var(--page-gutter) 32px;
 }
 
 .topbar {
   background: var(--surface);
   border-bottom: 1px solid var(--border);
-  padding: 0 16px;
+  padding: 0 var(--page-gutter);
   display: flex;
   align-items: stretch;
   position: sticky;
@@ -163,6 +165,8 @@ button.reset-btn { font: inherit; }
   display: flex;
   border-bottom: 1px solid var(--border);
   background: var(--surface);
+  margin: 0 calc(-1 * var(--page-gutter));
+  padding: 0 var(--page-gutter);
 }
 
 .stat-item {
@@ -194,10 +198,11 @@ button.reset-btn { font: inherit; }
 .stat-val.yellow { color: var(--pastel-yellow); }
 
 .day-header {
-  padding: 10px 16px;
+  padding: 12px 0;
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: 12px;
   border-bottom: 1px solid var(--border);
 }
 
@@ -226,7 +231,7 @@ button.reset-btn { font: inherit; }
   box-shadow: 0 0 12px rgba(168, 230, 200, .1);
 }
 
-.table-wrap { overflow-x: auto; }
+.table-wrap { overflow-x: auto; margin-top: 4px; }
 
 table.schedule {
   width: 100%;
@@ -379,11 +384,14 @@ table.schedule {
 .btn-danger { border-color: #3a1a1a; background: #1a0a0a; color: #f08080; }
 .btn-danger:hover { border-color: #f08080; }
 
+.resumo-wrap {
+  padding: 20px 0 8px;
+}
 .admin-users-head {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 12px;
+  gap: 16px;
   margin-bottom: 14px;
   padding-bottom: 8px;
   border-bottom: 1px solid var(--border);
@@ -519,7 +527,7 @@ label {
 .auth-link { margin-top: 16px; font-size: 13px; color: var(--text2); }
 .auth-link a { color: var(--pastel-green); text-decoration: none; }
 
-.flash-wrap { padding: 12px 16px 0; }
+.flash-wrap { padding: 12px 0 0; }
 .flash {
   padding: 9px 14px;
   border-radius: var(--radius);
@@ -624,7 +632,7 @@ label {
 .toast.show { opacity: 1; }
 
 .restrito-page {
-  padding: 28px 16px 48px;
+  padding: 28px 0 48px;
   max-width: 760px;
   margin: 0 auto;
 }
@@ -740,10 +748,12 @@ label {
 }
 
 @media (max-width: 860px) {
+  :root { --page-gutter: 16px; }
   .stats-bar { flex-wrap: wrap; }
   .stat-item { min-width: 50%; }
   .user-chip { display: none; }
   .topbar-actions { border-left: none; padding: 8px 0 8px 8px; }
   .access-denied-panel { padding: 36px 20px; }
   .access-denied-panel h2 { font-size: 26px; }
+  .admin-users-head { flex-wrap: wrap; }
 }
