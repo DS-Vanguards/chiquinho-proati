@@ -363,7 +363,7 @@ async function loadBlocks() {
       (row) => `<tr>
         <td style="font-family:var(--mono);font-size:11px">${escapeHtml(row.token)}</td>
         <td>${escapeHtml(row.ip)}</td>
-        <td><span class="badge ${row.strike_level >= 2 ? "badge-n" : "badge-yellow"}">${escapeHtml(row.level_label)}</span></td>
+        <td><span class="badge ${row.strike_level >= 6 ? "badge-n" : "badge-yellow"}">${escapeHtml(row.level_label)}</span></td>
         <td>${escapeHtml(row.blocked_until)}</td>
         <td>
           <div class="actions-stack">

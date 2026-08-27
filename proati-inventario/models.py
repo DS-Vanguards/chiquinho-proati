@@ -109,7 +109,7 @@ class DeviceBlock(db.Model):
             "attempt_count": self.attempt_count,
             "strike_level": self.strike_level,
             "blocked_until": until.strftime("%d/%m/%Y %H:%M") if until else "",
-            "level_label": "1 mês" if self.strike_level >= 2 else "1 dia",
+            "level_label": "1 dia" if self.strike_level >= 6 else "5 min",
         }
 
 

@@ -9,6 +9,9 @@ from models import DeviceBlock
 
 COOKIE_NAME = "dvg_machine"
 ATTEMPT_LIMIT = 4
+SHORT_BLOCK = timedelta(minutes=5)
+LONG_BLOCK = timedelta(days=1)
+RECURRENCE_LIMIT = 6
 
 
 def parse_block_duration(amount, unit: str):
@@ -100,19 +103,18 @@ def register_attempt(device: DeviceBlock) -> DeviceBlock:
     device.attempt_count = (device.attempt_count or 0) + 1
     device.updated_at = datetime.utcnow()
     if device.attempt_count >= ATTEMPT_LIMIT:
-        if device.strike_level >= 1:
-            device.strike_level = 2
-            device.blocked_until = datetime.utcnow() + timedelta(days=30)
+        device.strike_level = (device.strike_level or 0) + 1
+        if device.strike_level >= RECURRENCE_LIMIT:
+            device.blocked_until = datetime.utcnow() + LONG_BLOCK
         else:
-            device.strike_level = 1
-            device.blocked_until = datetime.utcnow() + timedelta(days=1)
+            device.blocked_until = datetime.utcnow() + SHORT_BLOCK
         device.attempt_count = 0
     db.session.commit()
     return device
 
 
 def blocked_page_context(device: DeviceBlock) -> dict:
-    if device.strike_level >= 2:
+    if device.strike_level >= RECURRENCE_LIMIT:
         return {
             "title": "Acesso bloqueado",
             "severe": True,
