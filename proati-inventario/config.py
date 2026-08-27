@@ -69,6 +69,7 @@ ROLES = [
     "admin",
     "proati",
     "coordenador",
+    "professor",
     "visualizador",
 ]
 
@@ -78,6 +79,7 @@ ROLE_LABELS = {
     "admin": "Admin",
     "proati": "Proati",
     "coordenador": "Coordenador",
+    "professor": "Professor",
     "visualizador": "Visualizador",
 }
 
@@ -87,12 +89,13 @@ ROLE_RANK = {
     "admin": 30,
     "proati": 20,
     "coordenador": 10,
+    "professor": 5,
     "visualizador": 0,
 }
 
 STAFF_ROLES = ("vgs_owner", "super_admin", "admin")
-EDITOR_ROLES = ("vgs_owner", "super_admin", "admin", "proati")
-VIEWER_ROLES = ("vgs_owner", "super_admin", "admin", "proati", "coordenador")
+EDITOR_ROLES = ("vgs_owner", "super_admin", "admin", "proati", "professor")
+VIEWER_ROLES = ("vgs_owner", "super_admin", "admin", "proati", "coordenador", "professor")
 
 
 def role_label(role: str) -> str:
@@ -144,9 +147,76 @@ def is_student_email(email: str) -> bool:
 def is_teacher_email(email: str) -> bool:
     return domain_allowed(email, TEACHER_EMAIL_DOMAINS)
 
-INVENTORY_TABS = ["tablets", "regular", "tecnico"]
+
+def allowed_tabs(role: str) -> list[str]:
+    if role == "professor":
+        return list(GESTAO_TABS)
+    if role in VIEWER_ROLES:
+        return list(ALL_TABS)
+    return []
+
+
+def nav_main_tabs(role: str) -> list[str]:
+    if role == "professor":
+        return list(GESTAO_TABS)
+    if role in VIEWER_ROLES:
+        return list(MAIN_NAV_TABS)
+    return []
+
+
+def nav_overflow_tabs(role: str) -> list[str]:
+    if role == "professor" or role not in VIEWER_ROLES:
+        return []
+    extra = list(OVERFLOW_NAV_TABS)
+    if role in STAFF_ROLES:
+        extra.append("admin")
+    return extra
+
+
+def can_access_tab(role: str, tab: str) -> bool:
+    if tab == "admin":
+        return role in STAFF_ROLES
+    return tab in allowed_tabs(role)
+
+
+def can_edit_tab(role: str, tab: str) -> bool:
+    if tab == "admin" or tab not in ALL_TABS:
+        return False
+    if role == "professor":
+        return tab in GESTAO_TABS
+    return role in EDITOR_ROLES
+
+INVENTORY_TABS = ["tablets", "regular", "tecnico", "gestao", "gestao_tablet", "gestao_tecnico"]
 MAINTENANCE_TABS = ["manutencao", "manutencao_tecnico"]
+GESTAO_TABS = ["gestao", "gestao_tablet", "gestao_tecnico"]
+TABLET_LIKE_TABS = ["tablets", "gestao_tablet"]
 ALL_TABS = INVENTORY_TABS + MAINTENANCE_TABS
+MAIN_NAV_TABS = ["tablets", "regular", "tecnico", "manutencao", "manutencao_tecnico", "gestao"]
+OVERFLOW_NAV_TABS = ["gestao_tablet", "gestao_tecnico"]
+
+TAB_LABELS = {
+    "tablets": "Tablets",
+    "regular": "Regular",
+    "tecnico": "Técnico",
+    "manutencao": "Manutenção",
+    "manutencao_tecnico": "Manutenção Técnico",
+    "gestao": "Gestão",
+    "gestao_tablet": "Gestão Tablet",
+    "gestao_tecnico": "Gestão Técnico",
+    "admin": "Administração",
+}
+
+TAB_ICONS = {
+    "tablets": "📋",
+    "regular": "💻",
+    "tecnico": "🖥️",
+    "manutencao": "🔧",
+    "manutencao_tecnico": "🛠️",
+    "gestao": "📁",
+    "gestao_tablet": "📱",
+    "gestao_tecnico": "🖥️",
+    "admin": "⚙",
+}
 
 TABLET_MODEL = "Multilaser T2040"
 

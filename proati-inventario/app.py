@@ -164,13 +164,29 @@ def is_maintenance_tab(tab: str) -> bool:
     return tab in config.MAINTENANCE_TABS
 
 
+def is_tablet_like_tab(tab: str) -> bool:
+    return tab in config.TABLET_LIKE_TABS
+
+
+def deny_tab(tab: str):
+    if not current_user.can_access_tab(tab):
+        return jsonify({"erro": "Aba indisponível para o seu cargo."}), 403
+    return None
+
+
+def deny_edit_tab(tab: str):
+    if not current_user.can_edit_tab(tab):
+        return jsonify({"erro": "Sem permissão para alterar esta aba."}), 403
+    return None
+
+
 def normalize_payload(tab: str, data: dict, existing=None):
     serial = (data.get("serial") or "").strip()
     numeracao = (data.get("numeracao") or "").strip()
     problema = (data.get("problema") or "").strip()
     status = (data.get("status") or "").strip()
 
-    if tab == "tablets":
+    if is_tablet_like_tab(tab):
         modelo = config.TABLET_MODEL
         status = None
     else:
@@ -179,7 +195,7 @@ def normalize_payload(tab: str, data: dict, existing=None):
     if not serial or not numeracao or not modelo:
         return None, "Preencha modelo, serial e numeração."
 
-    if is_inventory_tab(tab) and tab != "tablets":
+    if is_inventory_tab(tab) and not is_tablet_like_tab(tab):
         if status not in config.INVENTORY_STATUSES:
             return None, "Selecione um status válido."
     elif is_maintenance_tab(tab):
@@ -210,6 +226,8 @@ def inject_globals():
         "ASSIGNABLE_ROLES": assignable,
         "ALLOWED_EMAIL_DOMAINS": config.ALLOWED_EMAIL_DOMAINS,
         "TABLET_MODEL": config.TABLET_MODEL,
+        "TAB_LABELS": config.TAB_LABELS,
+        "TAB_ICONS": config.TAB_ICONS,
         "INVENTORY_STATUSES": config.INVENTORY_STATUSES,
         "MAINTENANCE_STATUSES": config.MAINTENANCE_STATUSES,
         "csrf_token": generate_csrf,
@@ -348,11 +366,17 @@ def register():
             if not exists:
                 flash("Este e-mail não existe.", "error")
             else:
-                user = User(username=username, email=email, role="visualizador")
+                if config.is_teacher_email(email):
+                    role = "professor"
+                else:
+                    role = "visualizador"
+                user = User(username=username, email=email, role=role)
                 user.set_password(password)
                 db.session.add(user)
                 db.session.commit()
-                if config.is_student_email(email):
+                if role == "professor":
+                    flash("Conta de professor criada. Entre para continuar.", "success")
+                elif config.is_student_email(email):
                     flash("Conta de aluno criada. Entre para continuar.", "success")
                 else:
                     flash("Conta criada. Aguarde um administrador liberar o acesso.", "success")
@@ -421,10 +445,15 @@ def restrito():
 @app.route("/painel")
 @inventory_required
 def painel():
+    main_tabs = config.nav_main_tabs(current_user.role)
+    overflow_tabs = config.nav_overflow_tabs(current_user.role)
     return render_template(
         "painel.html",
         can_edit=current_user.can_edit_inventory(),
         is_admin=current_user.can_manage_users(),
+        main_tabs=main_tabs,
+        overflow_tabs=overflow_tabs,
+        default_tab=main_tabs[0] if main_tabs else "tablets",
     )
 
 
@@ -434,6 +463,9 @@ def api_list_equipment():
     tab = request.args.get("tab", "")
     if tab not in config.ALL_TABS:
         return jsonify({"erro": "Aba inválida."}), 400
+    denied = deny_tab(tab)
+    if denied:
+        return denied
     items = (
         Equipment.query.filter_by(tab=tab)
         .order_by(Equipment.numeracao.asc(), Equipment.id.asc())
@@ -449,6 +481,9 @@ def api_create_equipment():
     tab = (data.get("tab") or "").strip()
     if tab not in config.ALL_TABS:
         return jsonify({"erro": "Aba inválida."}), 400
+    denied = deny_edit_tab(tab)
+    if denied:
+        return denied
 
     payload, error = normalize_payload(tab, data)
     if error:
@@ -470,6 +505,9 @@ def api_update_equipment(item_id):
     item = db.session.get(Equipment, item_id)
     if not item:
         return jsonify({"erro": "Equipamento não encontrado."}), 404
+    denied = deny_edit_tab(item.tab)
+    if denied:
+        return denied
 
     data = request.get_json(silent=True) or {}
     payload, error = normalize_payload(item.tab, data, existing=item)
@@ -495,6 +533,9 @@ def api_delete_equipment(item_id):
     item = db.session.get(Equipment, item_id)
     if not item:
         return jsonify({"erro": "Equipamento não encontrado."}), 404
+    denied = deny_edit_tab(item.tab)
+    if denied:
+        return denied
     db.session.delete(item)
     db.session.commit()
     return jsonify({"ok": True})

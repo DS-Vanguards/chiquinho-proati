@@ -4,6 +4,9 @@ const TABS = {
   tecnico: { label: "Técnico", kind: "inventory" },
   manutencao: { label: "Manutenção", kind: "maintenance" },
   manutencao_tecnico: { label: "Manutenção Técnico", kind: "maintenance" },
+  gestao: { label: "Gestão", kind: "inventory" },
+  gestao_tablet: { label: "Gestão Tablet", kind: "inventory", skipStatus: true, fixedModel: true },
+  gestao_tecnico: { label: "Gestão Técnico", kind: "inventory" },
 };
 
 const state = {
@@ -54,11 +57,11 @@ function badgeClass(status) {
 
 function renderStats(items) {
   const grid = $("summary-grid");
-  if (state.tab === "tablets") {
+  if (currentMeta().fixedModel) {
     grid.innerHTML = `
-      <div class="stat-item"><div class="stat-label">Tablets</div><div class="stat-val blue">${items.length}</div><div class="stat-unit">unidades</div></div>
+      <div class="stat-item"><div class="stat-label">${currentMeta().label}</div><div class="stat-val blue">${items.length}</div><div class="stat-unit">unidades</div></div>
       <div class="stat-item"><div class="stat-label">Modelo</div><div class="stat-val" style="font-size:15px;color:var(--pastel-purple)">${window.PROATI.tabletModel}</div><div class="stat-unit">único da escola</div></div>
-      <div class="stat-item"><div class="stat-label">Aba</div><div class="stat-val green">TABLETS</div><div class="stat-unit">inventário</div></div>`;
+      <div class="stat-item"><div class="stat-label">Aba</div><div class="stat-val green">${currentMeta().label.toUpperCase()}</div><div class="stat-unit">inventário</div></div>`;
     return;
   }
   if (isMaintenance()) {
@@ -214,6 +217,7 @@ function roleLabel(role) {
     admin: "Admin",
     proati: "Proati",
     coordenador: "Coordenador",
+    professor: "Professor",
     visualizador: "Visualizador",
   };
   return map[role] || role;
@@ -413,11 +417,42 @@ async function removeBlock(id) {
   }
 }
 
+function overflowTabs() {
+  return window.PROATI.overflowTabs || [];
+}
+
+function closeMoreMenu() {
+  const panel = $("nav-more-panel");
+  const btn = $("nav-more-btn");
+  if (panel) panel.hidden = true;
+  if (btn) btn.setAttribute("aria-expanded", "false");
+}
+
+function toggleMoreMenu(event) {
+  event.preventDefault();
+  event.stopPropagation();
+  const panel = $("nav-more-panel");
+  const btn = $("nav-more-btn");
+  if (!panel || !btn) return;
+  const shouldOpen = panel.hidden;
+  panel.hidden = !shouldOpen;
+  btn.setAttribute("aria-expanded", shouldOpen ? "true" : "false");
+}
+
 function showView(tab) {
   state.tab = tab;
+  const inOverflow = overflowTabs().includes(tab);
   document.querySelectorAll(".nav-tab").forEach((btn) => {
+    if (btn.id === "nav-more-btn") {
+      btn.classList.toggle("active", inOverflow);
+      return;
+    }
     btn.classList.toggle("active", btn.dataset.tab === tab);
   });
+  document.querySelectorAll(".nav-more-row").forEach((row) => {
+    row.classList.toggle("active", row.dataset.tab === tab);
+  });
+  closeMoreMenu();
   const isAdminTab = tab === "admin";
   $("view-inventory").classList.toggle("active", !isAdminTab);
   const adminView = $("view-admin");
@@ -431,8 +466,21 @@ function showView(tab) {
 }
 
 document.querySelectorAll(".nav-tab").forEach((btn) => {
+  if (btn.id === "nav-more-btn") return;
   btn.addEventListener("click", () => showView(btn.dataset.tab));
 });
+
+const moreBtn = $("nav-more-btn");
+if (moreBtn) {
+  moreBtn.addEventListener("click", toggleMoreMenu);
+  document.querySelectorAll(".nav-more-row").forEach((row) => {
+    row.addEventListener("click", () => showView(row.dataset.tab));
+  });
+  document.addEventListener("click", (event) => {
+    const wrap = $("nav-more");
+    if (wrap && !wrap.contains(event.target)) closeMoreMenu();
+  });
+}
 
 const addBtn = $("btn-add");
 if (addBtn) addBtn.addEventListener("click", () => openModal(null));
@@ -502,4 +550,4 @@ if (userModal) {
   });
 }
 
-showView("tablets");
+showView(window.PROATI.defaultTab || "tablets");

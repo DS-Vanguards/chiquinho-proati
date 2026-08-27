@@ -2,13 +2,29 @@
 {% block title %}Inventário — Proati{% endblock %}
 {% block nav %}
 <nav class="nav-tabs">
-  <button class="nav-tab active" data-tab="tablets" type="button"><span class="tab-icon">📋</span> Tablets</button>
-  <button class="nav-tab" data-tab="regular" type="button"><span class="tab-icon">💻</span> Regular</button>
-  <button class="nav-tab" data-tab="tecnico" type="button"><span class="tab-icon">🖥️</span> Técnico</button>
-  <button class="nav-tab" data-tab="manutencao" type="button"><span class="tab-icon">🔧</span> Manutenção</button>
-  <button class="nav-tab" data-tab="manutencao_tecnico" type="button"><span class="tab-icon">🛠️</span> Manutenção Técnico</button>
-  {% if is_admin %}
-  <button class="nav-tab" data-tab="admin" type="button"><span class="tab-icon">⚙</span> Administração</button>
+  {% for tab in main_tabs %}
+  <button class="nav-tab{% if loop.first %} active{% endif %}" data-tab="{{ tab }}" type="button">
+    <span class="tab-icon">{{ TAB_ICONS.get(tab, "") }}</span> {{ TAB_LABELS.get(tab, tab) }}
+  </button>
+  {% endfor %}
+  {% if overflow_tabs %}
+  <div class="nav-more" id="nav-more">
+    <button class="nav-tab nav-more-btn" type="button" id="nav-more-btn" aria-haspopup="true" aria-expanded="false">⋯</button>
+    <div class="nav-more-panel" id="nav-more-panel" hidden>
+      <table class="nav-more-table">
+        <thead>
+          <tr><th>Abas</th></tr>
+        </thead>
+        <tbody>
+          {% for tab in overflow_tabs %}
+          <tr class="nav-more-row" data-tab="{{ tab }}">
+            <td><span class="tab-icon">{{ TAB_ICONS.get(tab, "") }}</span> {{ TAB_LABELS.get(tab, tab) }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
   {% endif %}
 </nav>
 {% endblock %}
@@ -16,7 +32,7 @@
 <div id="view-inventory" class="view active">
   <div class="stats-bar" id="summary-grid"></div>
   <div class="day-header">
-    <span class="day-title" id="tab-label">Tablets</span>
+    <span class="day-title" id="tab-label">{{ TAB_LABELS.get(default_tab, "Tablets")|upper }}</span>
     {% if can_edit %}
     <button class="save-btn" id="btn-add" type="button">+ ADICIONAR</button>
     {% endif %}
@@ -170,7 +186,9 @@
     inventoryStatuses: {{ INVENTORY_STATUSES | tojson }},
     maintenanceStatuses: {{ MAINTENANCE_STATUSES | tojson }},
     roles: {{ ASSIGNABLE_ROLES | tojson }},
-    roleLabels: {{ ROLE_LABELS | tojson }}
+    roleLabels: {{ ROLE_LABELS | tojson }},
+    defaultTab: {{ default_tab | tojson }},
+    overflowTabs: {{ overflow_tabs | tojson }}
   };
 </script>
 <script src="{{ url_for('static', filename='js/app.js') }}"></script>

@@ -58,6 +58,10 @@ class User(UserMixin, db.Model):
         return self.role == "coordenador"
 
     @property
+    def is_professor(self) -> bool:
+        return self.role == "professor"
+
+    @property
     def is_visualizador(self) -> bool:
         return self.role == "visualizador"
 
@@ -73,6 +77,12 @@ class User(UserMixin, db.Model):
 
     def can_manage_users(self) -> bool:
         return self.role in config.STAFF_ROLES
+
+    def can_access_tab(self, tab: str) -> bool:
+        return config.can_access_tab(self.role, tab)
+
+    def can_edit_tab(self, tab: str) -> bool:
+        return config.can_edit_tab(self.role, tab)
 
 
 class DeviceBlock(db.Model):
