@@ -84,6 +84,9 @@ class User(UserMixin, db.Model):
     def can_edit_tab(self, tab: str) -> bool:
         return config.can_edit_tab(self.role, tab)
 
+    def can_write_reports(self) -> bool:
+        return self.is_professor or self.can_manage_users()
+
 
 class DeviceBlock(db.Model):
     __tablename__ = "device_blocks"
@@ -163,15 +166,16 @@ class Relatorio(db.Model):
 
     def to_dict(self, *, viewer=None) -> dict:
         mine = bool(viewer and self.professor_id == viewer.id)
+        can_write = bool(viewer and viewer.can_write_reports())
         can_alter = (
             mine
-            and getattr(viewer, "is_professor", False)
+            and can_write
             and self.status == "Em uso"
             and int(self.quantidade_atual or 0) > 0
         )
         can_finish = (
             mine
-            and getattr(viewer, "is_professor", False)
+            and can_write
             and bool(self.alterado)
             and self.status == "Em uso"
         )

@@ -198,6 +198,12 @@ def parse_positive_int(value):
     return number
 
 
+def deny_report_write():
+    if not current_user.can_write_reports():
+        return jsonify({"erro": "Sem permissão para gerenciar relatórios."}), 403
+    return None
+
+
 def deny_tab(tab: str):
     if not current_user.can_access_tab(tab):
         return jsonify({"erro": "Aba indisponível para o seu cargo."}), 403
@@ -605,8 +611,9 @@ def api_list_reports():
 @app.route("/api/relatorios", methods=["POST"])
 @inventory_required
 def api_create_report():
-    if not current_user.is_professor:
-        return jsonify({"erro": "Apenas professores podem adicionar relatórios."}), 403
+    denied_write = deny_report_write()
+    if denied_write:
+        return denied_write
     data = request.get_json(silent=True) or {}
     tab = (data.get("tab") or "").strip()
     if not is_gestao_tab(tab):
@@ -641,13 +648,14 @@ def api_create_report():
 @app.route("/api/relatorios/<int:item_id>/alterar", methods=["POST"])
 @inventory_required
 def api_alter_report(item_id):
-    if not current_user.is_professor:
-        return jsonify({"erro": "Apenas o professor do relatório pode alterá-lo."}), 403
+    denied_write = deny_report_write()
+    if denied_write:
+        return denied_write
     item, error = load_relatorio_or_error(item_id)
     if error:
         return error
     if item.professor_id != current_user.id:
-        return jsonify({"erro": "Só o professor que criou o relatório pode alterá-lo."}), 403
+        return jsonify({"erro": "Só quem criou o relatório pode alterá-lo."}), 403
     if item.status != "Em uso":
         return jsonify({"erro": "Este relatório já foi finalizado."}), 400
 
@@ -678,13 +686,14 @@ def api_alter_report(item_id):
 @app.route("/api/relatorios/<int:item_id>/finalizar", methods=["POST"])
 @inventory_required
 def api_finish_report(item_id):
-    if not current_user.is_professor:
-        return jsonify({"erro": "Apenas o professor do relatório pode finalizá-lo."}), 403
+    denied_write = deny_report_write()
+    if denied_write:
+        return denied_write
     item, error = load_relatorio_or_error(item_id)
     if error:
         return error
     if item.professor_id != current_user.id:
-        return jsonify({"erro": "Só o professor que criou o relatório pode finalizá-lo."}), 403
+        return jsonify({"erro": "Só quem criou o relatório pode finalizá-lo."}), 403
     if not item.alterado:
         return jsonify({"erro": "Finalize somente após alterar o relatório."}), 400
     if item.status != "Em uso":

@@ -265,7 +265,7 @@ function syncAddButton() {
   const addBtn = $("btn-add");
   if (!addBtn) return;
   if (isGestao()) {
-    addBtn.style.display = window.PROATI.isProfessor ? "" : "none";
+    addBtn.style.display = window.PROATI.isProfessor || window.PROATI.isAdmin ? "" : "none";
     addBtn.textContent = "+ ADICIONAR RELATÓRIO";
     return;
   }
