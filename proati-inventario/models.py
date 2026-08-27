@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from flask_login import UserMixin
 from sqlalchemy import inspect, text
@@ -143,6 +143,72 @@ class Equipment(db.Model):
         }
 
 
+class Relatorio(db.Model):
+    __tablename__ = "relatorios"
+
+    id = db.Column(db.Integer, primary_key=True)
+    tab = db.Column(db.String(40), nullable=False, index=True)
+    modelos = db.Column(db.String(200), nullable=False)
+    quantidade = db.Column(db.Integer, nullable=False)
+    quantidade_atual = db.Column(db.Integer, nullable=False)
+    sala = db.Column(db.String(80), nullable=False)
+    professor_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=True)
+    professor_nome = db.Column(db.String(80), nullable=False)
+    status = db.Column(db.String(40), default="Em uso", nullable=False)
+    alterado = db.Column(db.Boolean, default=False, nullable=False)
+    destinatario = db.Column(db.String(120), nullable=True)
+    sala_destino = db.Column(db.String(80), nullable=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    def to_dict(self, *, viewer=None) -> dict:
+        mine = bool(viewer and self.professor_id == viewer.id)
+        can_alter = (
+            mine
+            and getattr(viewer, "is_professor", False)
+            and self.status == "Em uso"
+            and int(self.quantidade_atual or 0) > 0
+        )
+        can_finish = (
+            mine
+            and getattr(viewer, "is_professor", False)
+            and bool(self.alterado)
+            and self.status == "Em uso"
+        )
+        can_delete = bool(viewer and viewer.can_manage_users())
+        return {
+            "id": self.id,
+            "tab": self.tab,
+            "modelos": self.modelos,
+            "quantidade": self.quantidade,
+            "quantidade_atual": self.quantidade_atual,
+            "sala": self.sala,
+            "professor_id": self.professor_id,
+            "professor": self.professor_nome,
+            "status": self.status,
+            "alterado": bool(self.alterado),
+            "destinatario": self.destinatario or "",
+            "sala_destino": self.sala_destino or "",
+            "mine": mine,
+            "can_alter": can_alter,
+            "can_finish": can_finish,
+            "can_delete": can_delete,
+        }
+
+
+def purge_expired_relatorios() -> int:
+    inspector = inspect(db.engine)
+    if "relatorios" not in inspector.get_table_names():
+        return 0
+    cutoff = datetime.utcnow() - timedelta(days=config.RELATORIO_TTL_DAYS)
+    deleted = Relatorio.query.filter(Relatorio.created_at < cutoff).delete(
+        synchronize_session=False
+    )
+    if deleted:
+        db.session.commit()
+    return deleted
+
+
 def ensure_schema():
     inspector = inspect(db.engine)
     if "users" not in inspector.get_table_names():
@@ -169,16 +235,12 @@ def ensure_schema():
         )
         db.session.execute(
             text(
-                "UPDATE equipment SET status = 'Danos físicos' WHERE status = 'Inoperante'"
-            )
-        )
-        db.session.execute(
-            text(
                 "UPDATE equipment SET status = 'Danos periféricos' "
-                "WHERE status = 'Danos perifericos'"
+                "WHERE status IN ('Inoperante', 'Danos físicos', 'Danos perifericos')"
             )
         )
         db.session.commit()
+    purge_expired_relatorios()
 
 
 def init_default_data():

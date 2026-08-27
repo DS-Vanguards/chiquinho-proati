@@ -118,6 +118,85 @@
   </div>
 </div>
 
+<div class="modal-overlay" id="report-modal">
+  <div class="modal">
+    <div class="modal-header">
+      <span class="modal-title">Adicionar Relatório</span>
+      <button class="modal-close-btn" type="button" id="report-modal-close">✕</button>
+    </div>
+    <form class="modal-body" id="report-form">
+      <label for="r-modelos">Modelos</label>
+      <input class="form-input" id="r-modelos" maxlength="200" required placeholder="Ex: ThinkPad, Chromebook">
+      <label for="r-quantidade">Quantidade</label>
+      <input class="form-input" id="r-quantidade" type="number" min="1" step="1" required placeholder="Ex: 10">
+      <label for="r-sala">Sala</label>
+      <input class="form-input" id="r-sala" maxlength="80" required placeholder="Ex: 12">
+    </form>
+    <div class="modal-footer">
+      <button class="close-footer-btn" type="button" id="report-modal-cancel">CANCELAR</button>
+      <button class="print-btn" type="submit" form="report-form">SALVAR</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="report-alter-modal">
+  <div class="modal">
+    <div class="modal-header">
+      <span class="modal-title">Alterar relatório</span>
+      <button class="modal-close-btn" type="button" id="report-alter-close">✕</button>
+    </div>
+    <form class="modal-body" id="report-alter-form">
+      <input type="hidden" id="ra-id">
+      <label for="ra-quantidade">Quantidade</label>
+      <input class="form-input" id="ra-quantidade" type="number" min="1" step="1" required placeholder="Quantidade a baixar">
+      <label for="ra-tipo">Situação</label>
+      <select class="form-input" id="ra-tipo" required>
+        <option value="Entregue">Entregue</option>
+        <option value="Transferido">Transferido</option>
+      </select>
+      <div id="wrap-destinatario" hidden>
+        <label for="ra-destinatario">Destinatário</label>
+        <input class="form-input" id="ra-destinatario" maxlength="120" placeholder="Nome do professor">
+      </div>
+      <div id="wrap-sala-destino" hidden>
+        <label for="ra-sala-destino">Sala de destino</label>
+        <input class="form-input" id="ra-sala-destino" maxlength="80" placeholder="Ex: 15">
+      </div>
+    </form>
+    <div class="modal-footer">
+      <button class="close-footer-btn" type="button" id="report-alter-cancel">CANCELAR</button>
+      <button class="print-btn" type="submit" form="report-alter-form">SALVAR</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="report-finish-modal">
+  <div class="modal">
+    <div class="modal-header">
+      <span class="modal-title">Finalizar relatório</span>
+      <button class="modal-close-btn" type="button" id="report-finish-close">✕</button>
+    </div>
+    <div class="modal-body">
+      <input type="hidden" id="rf-id">
+      <p class="admin-hint">Marque a situação dos notebooks deste relatório.</p>
+      <div class="role-options" id="finish-options">
+        <button class="role-option selected" type="button" data-finish="all">
+          <span>Todos foram entregues</span>
+          <span class="role-check">✓</span>
+        </button>
+        <button class="role-option" type="button" data-finish="pending">
+          <span>Ainda possui notebooks com o outro professor</span>
+          <span class="role-check">✓</span>
+        </button>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="close-footer-btn" type="button" id="report-finish-cancel">CANCELAR</button>
+      <button class="print-btn" type="button" id="report-finish-save">CONFIRMAR</button>
+    </div>
+  </div>
+</div>
+
 {% if is_admin %}
 <div class="modal-overlay" id="user-modal">
   <div class="modal">
@@ -147,6 +226,22 @@
     <div class="modal-footer">
       <button class="close-footer-btn" type="button" id="user-modal-cancel">CANCELAR</button>
       <button class="print-btn" type="submit" form="user-form">CADASTRAR</button>
+    </div>
+  </div>
+</div>
+<div class="modal-overlay" id="role-modal">
+  <div class="modal">
+    <div class="modal-header">
+      <span class="modal-title">Atribuir cargo</span>
+      <button class="modal-close-btn" type="button" id="role-modal-close">✕</button>
+    </div>
+    <div class="modal-body">
+      <p class="admin-hint" id="role-user-label"></p>
+      <div class="role-options" id="role-options"></div>
+    </div>
+    <div class="modal-footer">
+      <button class="close-footer-btn" type="button" id="role-modal-cancel">CANCELAR</button>
+      <button class="print-btn" type="button" id="role-modal-save">SALVAR</button>
     </div>
   </div>
 </div>
@@ -182,9 +277,12 @@
   window.PROATI = {
     canEdit: {{ can_edit | tojson }},
     isAdmin: {{ is_admin | tojson }},
+    isProfessor: {{ is_professor | tojson }},
+    userId: {{ user_id | tojson }},
     tabletModel: {{ TABLET_MODEL | tojson }},
     inventoryStatuses: {{ INVENTORY_STATUSES | tojson }},
     maintenanceStatuses: {{ MAINTENANCE_STATUSES | tojson }},
+    gestaoMoveTypes: {{ GESTAO_MOVE_TYPES | tojson }},
     roles: {{ ASSIGNABLE_ROLES | tojson }},
     roleLabels: {{ ROLE_LABELS | tojson }},
     defaultTab: {{ default_tab | tojson }},

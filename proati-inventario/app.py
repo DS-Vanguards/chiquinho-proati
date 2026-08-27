@@ -20,7 +20,7 @@ from flask_login import (
     login_user,
     logout_user,
 )
-from flask_wtf.csrf import CSRFProtect, generate_csrf
+from flask_wtf.csrf import CSRFError, CSRFProtect, generate_csrf
 from sqlalchemy.exc import IntegrityError
 
 import config
@@ -36,7 +36,15 @@ from hardening import (
     start_password_reset,
     too_many_requests,
 )
-from models import DeviceBlock, Equipment, User, ensure_schema, init_default_data
+from models import (
+    DeviceBlock,
+    Equipment,
+    Relatorio,
+    User,
+    ensure_schema,
+    init_default_data,
+    purge_expired_relatorios,
+)
 from device_guard import (
     blocked_page_context,
     identify_device,
@@ -62,6 +70,14 @@ with app.app_context():
     db.create_all()
     ensure_schema()
     init_default_data()
+
+
+@app.errorhandler(CSRFError)
+def handle_csrf_error(_error):
+    if request.path.startswith("/api/"):
+        return jsonify({"erro": "Sessão expirada. Recarregue a página."}), 400
+    flash("Sessão expirada. Tente de novo.", "error")
+    return redirect(url_for("login"))
 
 
 @login_manager.user_loader
@@ -164,8 +180,22 @@ def is_maintenance_tab(tab: str) -> bool:
     return tab in config.MAINTENANCE_TABS
 
 
+def is_gestao_tab(tab: str) -> bool:
+    return tab in config.GESTAO_TABS
+
+
 def is_tablet_like_tab(tab: str) -> bool:
     return tab in config.TABLET_LIKE_TABS
+
+
+def parse_positive_int(value):
+    try:
+        number = int(str(value).strip())
+    except (TypeError, ValueError):
+        return None
+    if number < 1:
+        return None
+    return number
 
 
 def deny_tab(tab: str):
@@ -230,6 +260,7 @@ def inject_globals():
         "TAB_ICONS": config.TAB_ICONS,
         "INVENTORY_STATUSES": config.INVENTORY_STATUSES,
         "MAINTENANCE_STATUSES": config.MAINTENANCE_STATUSES,
+        "GESTAO_MOVE_TYPES": config.GESTAO_MOVE_TYPES,
         "csrf_token": generate_csrf,
     }
 
@@ -451,6 +482,8 @@ def painel():
         "painel.html",
         can_edit=current_user.can_edit_inventory(),
         is_admin=current_user.can_manage_users(),
+        is_professor=current_user.is_professor,
+        user_id=current_user.id,
         main_tabs=main_tabs,
         overflow_tabs=overflow_tabs,
         default_tab=main_tabs[0] if main_tabs else "tablets",
@@ -461,7 +494,7 @@ def painel():
 @inventory_required
 def api_list_equipment():
     tab = request.args.get("tab", "")
-    if tab not in config.ALL_TABS:
+    if tab not in config.EQUIPMENT_TABS:
         return jsonify({"erro": "Aba inválida."}), 400
     denied = deny_tab(tab)
     if denied:
@@ -479,7 +512,7 @@ def api_list_equipment():
 def api_create_equipment():
     data = request.get_json(silent=True) or {}
     tab = (data.get("tab") or "").strip()
-    if tab not in config.ALL_TABS:
+    if tab not in config.EQUIPMENT_TABS:
         return jsonify({"erro": "Aba inválida."}), 400
     denied = deny_edit_tab(tab)
     if denied:
@@ -534,6 +567,144 @@ def api_delete_equipment(item_id):
     if not item:
         return jsonify({"erro": "Equipamento não encontrado."}), 404
     denied = deny_edit_tab(item.tab)
+    if denied:
+        return denied
+    db.session.delete(item)
+    db.session.commit()
+    return jsonify({"ok": True})
+
+
+def load_relatorio_or_error(item_id):
+    item = db.session.get(Relatorio, item_id)
+    if not item:
+        return None, (jsonify({"erro": "Relatório não encontrado."}), 404)
+    denied = deny_tab(item.tab)
+    if denied:
+        return None, denied
+    return item, None
+
+
+@app.route("/api/relatorios")
+@inventory_required
+def api_list_reports():
+    tab = request.args.get("tab", "")
+    if not is_gestao_tab(tab):
+        return jsonify({"erro": "Aba inválida."}), 400
+    denied = deny_tab(tab)
+    if denied:
+        return denied
+    purge_expired_relatorios()
+    items = (
+        Relatorio.query.filter_by(tab=tab)
+        .order_by(Relatorio.created_at.desc(), Relatorio.id.desc())
+        .all()
+    )
+    return jsonify({"itens": [item.to_dict(viewer=current_user) for item in items]})
+
+
+@app.route("/api/relatorios", methods=["POST"])
+@inventory_required
+def api_create_report():
+    if not current_user.is_professor:
+        return jsonify({"erro": "Apenas professores podem adicionar relatórios."}), 403
+    data = request.get_json(silent=True) or {}
+    tab = (data.get("tab") or "").strip()
+    if not is_gestao_tab(tab):
+        return jsonify({"erro": "Aba inválida."}), 400
+    denied = deny_tab(tab)
+    if denied:
+        return denied
+
+    modelos = (data.get("modelos") or "").strip()[:200]
+    sala = (data.get("sala") or "").strip()[:80]
+    quantidade = parse_positive_int(data.get("quantidade"))
+    if not modelos or not sala or not quantidade:
+        return jsonify({"erro": "Preencha modelos, quantidade e sala."}), 400
+
+    purge_expired_relatorios()
+    item = Relatorio(
+        tab=tab,
+        modelos=modelos,
+        quantidade=quantidade,
+        quantidade_atual=quantidade,
+        sala=sala,
+        professor_id=current_user.id,
+        professor_nome=current_user.username,
+        status="Em uso",
+        alterado=False,
+    )
+    db.session.add(item)
+    db.session.commit()
+    return jsonify({"item": item.to_dict(viewer=current_user)}), 201
+
+
+@app.route("/api/relatorios/<int:item_id>/alterar", methods=["POST"])
+@inventory_required
+def api_alter_report(item_id):
+    if not current_user.is_professor:
+        return jsonify({"erro": "Apenas o professor do relatório pode alterá-lo."}), 403
+    item, error = load_relatorio_or_error(item_id)
+    if error:
+        return error
+    if item.professor_id != current_user.id:
+        return jsonify({"erro": "Só o professor que criou o relatório pode alterá-lo."}), 403
+    if item.status != "Em uso":
+        return jsonify({"erro": "Este relatório já foi finalizado."}), 400
+
+    data = request.get_json(silent=True) or {}
+    quantidade = parse_positive_int(data.get("quantidade"))
+    tipo = (data.get("tipo") or "").strip()
+    if not quantidade:
+        return jsonify({"erro": "Informe uma quantidade válida."}), 400
+    if quantidade > int(item.quantidade_atual or 0):
+        return jsonify({"erro": "A quantidade não pode ser maior que a quantidade atual."}), 400
+    if tipo not in config.GESTAO_MOVE_TYPES:
+        return jsonify({"erro": "Selecione Transferido ou Entregue."}), 400
+
+    destinatario = (data.get("destinatario") or "").strip()[:120]
+    sala_destino = (data.get("sala_destino") or "").strip()[:80]
+    if tipo == "Transferido":
+        if not destinatario or not sala_destino:
+            return jsonify({"erro": "Informe o destinatário e a sala de destino."}), 400
+        item.destinatario = destinatario
+        item.sala_destino = sala_destino
+    item.quantidade_atual = int(item.quantidade_atual) - quantidade
+    item.alterado = True
+    item.updated_at = datetime.utcnow()
+    db.session.commit()
+    return jsonify({"item": item.to_dict(viewer=current_user)})
+
+
+@app.route("/api/relatorios/<int:item_id>/finalizar", methods=["POST"])
+@inventory_required
+def api_finish_report(item_id):
+    if not current_user.is_professor:
+        return jsonify({"erro": "Apenas o professor do relatório pode finalizá-lo."}), 403
+    item, error = load_relatorio_or_error(item_id)
+    if error:
+        return error
+    if item.professor_id != current_user.id:
+        return jsonify({"erro": "Só o professor que criou o relatório pode finalizá-lo."}), 403
+    if not item.alterado:
+        return jsonify({"erro": "Finalize somente após alterar o relatório."}), 400
+    if item.status != "Em uso":
+        return jsonify({"erro": "Este relatório já foi finalizado."}), 400
+
+    data = request.get_json(silent=True) or {}
+    todos_entregues = bool(data.get("todos_entregues"))
+    item.status = "Entregues" if todos_entregues else "Pendente"
+    item.updated_at = datetime.utcnow()
+    db.session.commit()
+    return jsonify({"item": item.to_dict(viewer=current_user)})
+
+
+@app.route("/api/relatorios/<int:item_id>", methods=["DELETE"])
+@admin_required
+def api_delete_report(item_id):
+    item = db.session.get(Relatorio, item_id)
+    if not item:
+        return jsonify({"erro": "Relatório não encontrado."}), 404
+    denied = deny_tab(item.tab)
     if denied:
         return denied
     db.session.delete(item)

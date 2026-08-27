@@ -186,11 +186,12 @@ def can_edit_tab(role: str, tab: str) -> bool:
         return tab in GESTAO_TABS
     return role in EDITOR_ROLES
 
-INVENTORY_TABS = ["tablets", "regular", "tecnico", "gestao", "gestao_tablet", "gestao_tecnico"]
+INVENTORY_TABS = ["tablets", "regular", "tecnico"]
 MAINTENANCE_TABS = ["manutencao", "manutencao_tecnico"]
 GESTAO_TABS = ["gestao", "gestao_tablet", "gestao_tecnico"]
-TABLET_LIKE_TABS = ["tablets", "gestao_tablet"]
-ALL_TABS = INVENTORY_TABS + MAINTENANCE_TABS
+TABLET_LIKE_TABS = ["tablets"]
+EQUIPMENT_TABS = INVENTORY_TABS + MAINTENANCE_TABS
+ALL_TABS = EQUIPMENT_TABS + GESTAO_TABS
 MAIN_NAV_TABS = ["tablets", "regular", "tecnico", "manutencao", "manutencao_tecnico", "gestao"]
 OVERFLOW_NAV_TABS = ["gestao_tablet", "gestao_tecnico"]
 
@@ -220,12 +221,15 @@ TAB_ICONS = {
 
 TABLET_MODEL = "Multilaser T2040"
 
-INVENTORY_STATUSES = ["Perfeito estado", "Danos periféricos", "Danos físicos"]
+INVENTORY_STATUSES = ["Perfeito estado", "Danos periféricos"]
 MAINTENANCE_STATUSES = [
     "Aguardando chamado",
     "Chamado realizado",
     "Aguardando inspeção",
 ]
+GESTAO_STATUSES = ["Em uso", "Pendente", "Entregues"]
+GESTAO_MOVE_TYPES = ["Transferido", "Entregue"]
+RELATORIO_TTL_DAYS = 21
 
 # Metadados internos de layout
 _LS_REF = "aHR0cHM6Ly9kcy12YW5ndWFyZHMudmVyY2VsLmFwcC8="

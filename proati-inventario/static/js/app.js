@@ -4,14 +4,19 @@ const TABS = {
   tecnico: { label: "Técnico", kind: "inventory" },
   manutencao: { label: "Manutenção", kind: "maintenance" },
   manutencao_tecnico: { label: "Manutenção Técnico", kind: "maintenance" },
-  gestao: { label: "Gestão", kind: "inventory" },
-  gestao_tablet: { label: "Gestão Tablet", kind: "inventory", skipStatus: true, fixedModel: true },
-  gestao_tecnico: { label: "Gestão Técnico", kind: "inventory" },
+  gestao: { label: "Gestão", kind: "gestao" },
+  gestao_tablet: { label: "Gestão Tablet", kind: "gestao" },
+  gestao_tecnico: { label: "Gestão Técnico", kind: "gestao" },
 };
 
 const state = {
   tab: "tablets",
   items: [],
+  users: [],
+  assignableRoles: [],
+  roleUserId: "",
+  pickedRole: "",
+  finishChoice: "all",
 };
 
 function $(id) {
@@ -25,11 +30,31 @@ function showToast(msg) {
   setTimeout(() => t.classList.remove("show"), 2800);
 }
 
+function csrfToken() {
+  return document.querySelector('meta[name="csrf-token"]')?.getAttribute("content") || "";
+}
+
 async function request(url, options = {}) {
-  const res = await fetch(url, {
-    headers: { "Content-Type": "application/json", ...(options.headers || {}) },
-    ...options,
-  });
+  const headers = new Headers(options.headers || {});
+  if (!headers.has("Content-Type")) headers.set("Content-Type", "application/json");
+  const token = csrfToken();
+  if (token) {
+    if (!headers.has("X-CSRFToken")) headers.set("X-CSRFToken", token);
+    if (!headers.has("X-CSRF-Token")) headers.set("X-CSRF-Token", token);
+  }
+  let body = options.body;
+  if (token && typeof body === "string") {
+    try {
+      const parsed = JSON.parse(body);
+      if (parsed && typeof parsed === "object" && !Array.isArray(parsed) && !parsed.csrf_token) {
+        parsed.csrf_token = token;
+        body = JSON.stringify(parsed);
+      }
+    } catch (err) {
+      /* keep original body */
+    }
+  }
+  const res = await fetch(url, { credentials: "same-origin", ...options, headers, body });
   const data = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(data.erro || "Falha na requisição");
   return data;
@@ -43,20 +68,37 @@ function isMaintenance() {
   return currentMeta().kind === "maintenance";
 }
 
+function isGestao() {
+  return currentMeta().kind === "gestao";
+}
+
 function badgeClass(status) {
   const map = {
     "Perfeito estado": "badge-t",
     "Danos periféricos": "badge-yellow",
-    "Danos físicos": "badge-n",
     "Aguardando chamado": "badge-yellow",
     "Chamado realizado": "badge-t",
     "Aguardando inspeção": "badge-n",
+    "Em uso": "badge-t",
+    Pendente: "badge-yellow",
+    Entregues: "badge-ok",
   };
   return map[status] || "badge-t";
 }
 
 function renderStats(items) {
   const grid = $("summary-grid");
+  if (isGestao()) {
+    const uso = items.filter((i) => i.status === "Em uso").length;
+    const pend = items.filter((i) => i.status === "Pendente").length;
+    const ok = items.filter((i) => i.status === "Entregues").length;
+    grid.innerHTML = `
+      <div class="stat-item"><div class="stat-label">Total</div><div class="stat-val yellow">${items.length}</div><div class="stat-unit">relatórios</div></div>
+      <div class="stat-item"><div class="stat-label">Em uso</div><div class="stat-val blue">${uso}</div><div class="stat-unit">relatórios</div></div>
+      <div class="stat-item"><div class="stat-label">Pendente</div><div class="stat-val" style="color:var(--pastel-orange)">${pend}</div><div class="stat-unit">relatórios</div></div>
+      <div class="stat-item"><div class="stat-label">Entregues</div><div class="stat-val green">${ok}</div><div class="stat-unit">relatórios</div></div>`;
+    return;
+  }
   if (currentMeta().fixedModel) {
     grid.innerHTML = `
       <div class="stat-item"><div class="stat-label">${currentMeta().label}</div><div class="stat-val blue">${items.length}</div><div class="stat-unit">unidades</div></div>
@@ -77,15 +119,42 @@ function renderStats(items) {
   }
   const ok = items.filter((i) => i.status === "Perfeito estado").length;
   const peri = items.filter((i) => i.status === "Danos periféricos").length;
-  const fis = items.filter((i) => i.status === "Danos físicos").length;
   grid.innerHTML = `
     <div class="stat-item"><div class="stat-label">Total</div><div class="stat-val yellow">${items.length}</div><div class="stat-unit">unidades</div></div>
     <div class="stat-item"><div class="stat-label">Perfeito estado</div><div class="stat-val green">${ok}</div><div class="stat-unit">unidades</div></div>
-    <div class="stat-item"><div class="stat-label">Danos periféricos</div><div class="stat-val blue">${peri}</div><div class="stat-unit">unidades</div></div>
-    <div class="stat-item"><div class="stat-label">Danos físicos</div><div class="stat-val" style="color:var(--pastel-pink)">${fis}</div><div class="stat-unit">unidades</div></div>`;
+    <div class="stat-item"><div class="stat-label">Danos periféricos</div><div class="stat-val blue">${peri}</div><div class="stat-unit">unidades</div></div>`;
+}
+
+function hasRowActions(item) {
+  if (isGestao()) {
+    return Boolean(item && (item.can_alter || item.can_finish || item.can_delete));
+  }
+  return Boolean(window.PROATI.canEdit);
+}
+
+function showActionsColumn() {
+  if (isGestao()) {
+    return window.PROATI.isProfessor || window.PROATI.isAdmin || state.items.some(hasRowActions);
+  }
+  return Boolean(window.PROATI.canEdit);
 }
 
 function renderHead() {
+  if (isGestao()) {
+    $("equip-head").innerHTML = `<tr>
+      <th class="th-n">#</th>
+      <th class="th-tab">Modelos</th>
+      <th>Quantidade</th>
+      <th>Quantidade atual</th>
+      <th>Sala</th>
+      <th>Professor</th>
+      <th>Destinatário</th>
+      <th>Sala de destino</th>
+      <th style="text-align:center">Status</th>
+      ${showActionsColumn() ? `<th style="width:220px">Ações</th>` : ""}
+    </tr>`;
+    return;
+  }
   const maintenance = isMaintenance();
   const skipStatus = currentMeta().skipStatus;
   $("equip-head").innerHTML = `<tr>
@@ -101,6 +170,37 @@ function renderHead() {
 
 function renderRows(items) {
   const body = $("equip-body");
+  if (isGestao()) {
+    const actionsOn = showActionsColumn();
+    if (!items.length) {
+      body.innerHTML = `<tr><td colspan="${actionsOn ? 10 : 9}" class="empty">Nenhum relatório registrado.</td></tr>`;
+      return;
+    }
+    body.innerHTML = items
+      .map((item, idx) => {
+        const buttons = [];
+        if (item.can_alter) buttons.push(`<button class="btn-sm" data-alter="${item.id}" type="button">Alterar</button>`);
+        if (item.can_finish) buttons.push(`<button class="btn-sm btn-ok" data-finish="${item.id}" type="button">Finalizado</button>`);
+        if (item.can_delete) buttons.push(`<button class="btn-sm btn-danger" data-del-report="${item.id}" type="button">Excluir</button>`);
+        const actions = actionsOn
+          ? `<td class="actions-cell">${buttons.join("") || "—"}</td>`
+          : "";
+        return `<tr>
+          <td class="td-num"><span class="num-badge">${idx + 1}</span></td>
+          <td class="td-tab">${escapeHtml(item.modelos)}</td>
+          <td>${escapeHtml(item.quantidade)}</td>
+          <td>${escapeHtml(item.quantidade_atual)}</td>
+          <td>${escapeHtml(item.sala)}</td>
+          <td>${escapeHtml(item.professor)}</td>
+          <td>${escapeHtml(item.destinatario || "—")}</td>
+          <td>${escapeHtml(item.sala_destino || "—")}</td>
+          <td style="text-align:center"><span class="badge ${badgeClass(item.status)}">${escapeHtml(item.status)}</span></td>
+          ${actions}
+        </tr>`;
+      })
+      .join("");
+    return;
+  }
   const maintenance = isMaintenance();
   const skipStatus = currentMeta().skipStatus;
   if (!items.length) {
@@ -143,6 +243,34 @@ async function loadEquipment() {
   renderStats(state.items);
   renderHead();
   renderRows(state.items);
+}
+
+async function loadReports() {
+  const data = await request(`/api/relatorios?tab=${encodeURIComponent(state.tab)}`);
+  state.items = data.itens || [];
+  renderStats(state.items);
+  renderHead();
+  renderRows(state.items);
+}
+
+async function loadTab() {
+  if (isGestao()) {
+    await loadReports();
+    return;
+  }
+  await loadEquipment();
+}
+
+function syncAddButton() {
+  const addBtn = $("btn-add");
+  if (!addBtn) return;
+  if (isGestao()) {
+    addBtn.style.display = window.PROATI.isProfessor ? "" : "none";
+    addBtn.textContent = "+ ADICIONAR RELATÓRIO";
+    return;
+  }
+  addBtn.style.display = window.PROATI.canEdit ? "" : "none";
+  addBtn.textContent = "+ ADICIONAR";
 }
 
 function openModal(item) {
@@ -208,6 +336,131 @@ async function removeEquipment(id) {
   }
 }
 
+function openReportModal() {
+  $("r-modelos").value = "";
+  $("r-quantidade").value = "";
+  $("r-sala").value = "";
+  $("report-modal").classList.add("open");
+}
+
+function closeReportModal() {
+  $("report-modal").classList.remove("open");
+}
+
+async function saveReport(event) {
+  event.preventDefault();
+  try {
+    await request("/api/relatorios", {
+      method: "POST",
+      body: JSON.stringify({
+        tab: state.tab,
+        modelos: $("r-modelos").value.trim(),
+        quantidade: $("r-quantidade").value,
+        sala: $("r-sala").value.trim(),
+      }),
+    });
+    showToast("✔ Relatório adicionado");
+    closeReportModal();
+    await loadReports();
+  } catch (err) {
+    showToast("✘ " + err.message);
+  }
+}
+
+function syncTransferFields() {
+  const show = $("ra-tipo").value === "Transferido";
+  $("wrap-destinatario").hidden = !show;
+  $("wrap-sala-destino").hidden = !show;
+  $("ra-destinatario").required = show;
+  $("ra-sala-destino").required = show;
+  if (!show) {
+    $("ra-destinatario").value = "";
+    $("ra-sala-destino").value = "";
+  }
+}
+
+function openAlterModal(item) {
+  $("ra-id").value = item.id;
+  $("ra-quantidade").value = "";
+  $("ra-quantidade").max = item.quantidade_atual;
+  $("ra-tipo").value = "Entregue";
+  $("ra-destinatario").value = "";
+  $("ra-sala-destino").value = "";
+  syncTransferFields();
+  $("report-alter-modal").classList.add("open");
+}
+
+function closeAlterModal() {
+  $("report-alter-modal").classList.remove("open");
+}
+
+async function saveAlterReport(event) {
+  event.preventDefault();
+  const id = $("ra-id").value;
+  const payload = {
+    quantidade: $("ra-quantidade").value,
+    tipo: $("ra-tipo").value,
+  };
+  if (payload.tipo === "Transferido") {
+    payload.destinatario = $("ra-destinatario").value.trim();
+    payload.sala_destino = $("ra-sala-destino").value.trim();
+  }
+  try {
+    await request(`/api/relatorios/${id}/alterar`, {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
+    showToast("✔ Relatório alterado");
+    closeAlterModal();
+    await loadReports();
+  } catch (err) {
+    showToast("✘ " + err.message);
+  }
+}
+
+function pickFinish(choice) {
+  state.finishChoice = choice;
+  document.querySelectorAll("#finish-options .role-option").forEach((btn) => {
+    btn.classList.toggle("selected", btn.dataset.finish === choice);
+  });
+}
+
+function openFinishModal(item) {
+  $("rf-id").value = item.id;
+  pickFinish("all");
+  $("report-finish-modal").classList.add("open");
+}
+
+function closeFinishModal() {
+  $("report-finish-modal").classList.remove("open");
+}
+
+async function saveFinishReport() {
+  const id = $("rf-id").value;
+  try {
+    await request(`/api/relatorios/${id}/finalizar`, {
+      method: "POST",
+      body: JSON.stringify({ todos_entregues: state.finishChoice === "all" }),
+    });
+    showToast(state.finishChoice === "all" ? "✔ Relatório entregue" : "✔ Relatório pendente");
+    closeFinishModal();
+    await loadReports();
+  } catch (err) {
+    showToast("✘ " + err.message);
+  }
+}
+
+async function removeReport(id) {
+  if (!confirm("Excluir este relatório?")) return;
+  try {
+    await request(`/api/relatorios/${id}`, { method: "DELETE" });
+    showToast("✔ Relatório excluído");
+    await loadReports();
+  } catch (err) {
+    showToast("✘ " + err.message);
+  }
+}
+
 function roleLabel(role) {
   const labels = window.PROATI.roleLabels || {};
   if (labels[role]) return labels[role];
@@ -232,22 +485,18 @@ async function loadUsers() {
     return;
   }
   const assignable = data.assignable_roles || window.PROATI.roles || [];
+  state.users = data.usuarios;
+  state.assignableRoles = assignable;
   body.innerHTML = data.usuarios
     .map((user) => {
-      const options = assignable
-        .map((r) => `<option value="${r}" ${r === user.role ? "selected" : ""}>${roleLabel(r)}</option>`)
-        .join("");
       const pending = user.must_reset_password
         ? `<span class="badge badge-yellow">Aguardando senha</span>`
         : "";
-      let cargo;
+      let cargo = `<span class="badge badge-${user.role}">${roleLabel(user.role)}</span>`;
       if (user.is_self) {
-        cargo = `<span class="badge badge-${user.role}">${roleLabel(user.role)}</span><span class="text-muted">Sua conta</span>`;
+        cargo += `<span class="text-muted">Sua conta</span>`;
       } else if (user.can_edit_role) {
-        cargo = `<select class="form-input inline-select" data-role="${user.id}">${options}</select>
-           <button class="btn-sm btn-save-role" data-save-role="${user.id}" type="button">Salvar</button>`;
-      } else {
-        cargo = `<span class="badge badge-${user.role}">${roleLabel(user.role)}</span>`;
+        cargo += `<button class="btn-sm btn-save-role" data-edit-role="${user.id}" type="button">Alterar cargo</button>`;
       }
       const resetBtn = user.can_reset
         ? `<button class="btn-sm btn-warning" data-reset="${user.id}" type="button">Redefinir senha</button>`
@@ -270,14 +519,46 @@ async function loadUsers() {
     .join("");
 }
 
-async function saveRole(userId) {
-  const select = document.querySelector(`[data-role="${userId}"]`);
+function openRoleModal(userId) {
+  const user = state.users.find((item) => String(item.id) === String(userId));
+  const modal = $("role-modal");
+  if (!user || !modal) return;
+  state.roleUserId = user.id;
+  state.pickedRole = user.role;
+  $("role-user-label").textContent = `${user.username} · ${user.email}`;
+  const roles = [...new Set([user.role, ...(state.assignableRoles || [])])];
+  $("role-options").innerHTML = roles
+    .map(
+      (role) => `<button class="role-option${role === user.role ? " selected" : ""}" type="button" data-pick-role="${role}">
+        <span class="badge badge-${role}">${roleLabel(role)}</span>
+        <span class="role-check">✓</span>
+      </button>`
+    )
+    .join("");
+  modal.classList.add("open");
+}
+
+function closeRoleModal() {
+  const modal = $("role-modal");
+  if (modal) modal.classList.remove("open");
+}
+
+function pickRole(role) {
+  state.pickedRole = role;
+  document.querySelectorAll(".role-option").forEach((btn) => {
+    btn.classList.toggle("selected", btn.dataset.pickRole === role);
+  });
+}
+
+async function saveRole() {
+  if (!state.roleUserId || !state.pickedRole) return;
   try {
-    await request(`/api/usuarios/${userId}/cargo`, {
+    await request(`/api/usuarios/${state.roleUserId}/cargo`, {
       method: "POST",
-      body: JSON.stringify({ role: select.value }),
+      body: JSON.stringify({ role: state.pickedRole }),
     });
     showToast("✔ Cargo atualizado");
+    closeRoleModal();
     await loadUsers();
   } catch (err) {
     showToast("✘ " + err.message);
@@ -462,7 +743,8 @@ function showView(tab) {
     return;
   }
   $("tab-label").textContent = currentMeta().label.toUpperCase();
-  loadEquipment().catch((err) => showToast("✘ " + err.message));
+  syncAddButton();
+  loadTab().catch((err) => showToast("✘ " + err.message));
 }
 
 document.querySelectorAll(".nav-tab").forEach((btn) => {
@@ -483,7 +765,12 @@ if (moreBtn) {
 }
 
 const addBtn = $("btn-add");
-if (addBtn) addBtn.addEventListener("click", () => openModal(null));
+if (addBtn) {
+  addBtn.addEventListener("click", () => {
+    if (isGestao()) openReportModal();
+    else openModal(null);
+  });
+}
 $("modal-close").addEventListener("click", closeModal);
 $("modal-cancel").addEventListener("click", closeModal);
 $("equip-modal").addEventListener("click", (e) => {
@@ -493,20 +780,58 @@ $("equip-form").addEventListener("submit", saveEquipment);
 $("equip-body").addEventListener("click", (e) => {
   const editId = e.target.dataset.edit;
   const delId = e.target.dataset.del;
+  const alterId = e.target.dataset.alter;
+  const finishId = e.target.dataset.finish;
+  const delReportId = e.target.dataset.delReport;
   if (editId) {
     const item = state.items.find((i) => String(i.id) === String(editId));
     if (item) openModal(item);
   }
   if (delId) removeEquipment(delId);
+  if (alterId) {
+    const item = state.items.find((i) => String(i.id) === String(alterId));
+    if (item) openAlterModal(item);
+  }
+  if (finishId) {
+    const item = state.items.find((i) => String(i.id) === String(finishId));
+    if (item) openFinishModal(item);
+  }
+  if (delReportId) removeReport(delReportId);
+});
+
+$("report-modal-close").addEventListener("click", closeReportModal);
+$("report-modal-cancel").addEventListener("click", closeReportModal);
+$("report-modal").addEventListener("click", (e) => {
+  if (e.target.id === "report-modal") closeReportModal();
+});
+$("report-form").addEventListener("submit", saveReport);
+
+$("report-alter-close").addEventListener("click", closeAlterModal);
+$("report-alter-cancel").addEventListener("click", closeAlterModal);
+$("report-alter-modal").addEventListener("click", (e) => {
+  if (e.target.id === "report-alter-modal") closeAlterModal();
+});
+$("report-alter-form").addEventListener("submit", saveAlterReport);
+$("ra-tipo").addEventListener("change", syncTransferFields);
+
+$("report-finish-close").addEventListener("click", closeFinishModal);
+$("report-finish-cancel").addEventListener("click", closeFinishModal);
+$("report-finish-save").addEventListener("click", saveFinishReport);
+$("report-finish-modal").addEventListener("click", (e) => {
+  if (e.target.id === "report-finish-modal") closeFinishModal();
+});
+$("finish-options").addEventListener("click", (e) => {
+  const pick = e.target.closest("[data-finish]");
+  if (pick) pickFinish(pick.dataset.finish);
 });
 
 const usersBody = $("users-body");
 if (usersBody) {
   usersBody.addEventListener("click", (e) => {
-    const saveBtn = e.target.closest("[data-save-role]");
+    const editRoleBtn = e.target.closest("[data-edit-role]");
     const delBtn = e.target.closest("[data-del-user]");
     const resetBtn = e.target.closest("[data-reset]");
-    if (saveBtn) saveRole(saveBtn.dataset.saveRole);
+    if (editRoleBtn) openRoleModal(editRoleBtn.dataset.editRole);
     if (delBtn) deleteUser(delBtn.dataset.delUser);
     if (resetBtn) resetPassword(resetBtn.dataset.reset);
   });
@@ -519,6 +844,20 @@ if (blocksBody) {
     const unblockBtn = e.target.closest("[data-unblock]");
     if (reduceBtn) openBlockModal(reduceBtn.dataset.reduce);
     if (unblockBtn) removeBlock(unblockBtn.dataset.unblock);
+  });
+}
+
+const roleModal = $("role-modal");
+if (roleModal) {
+  $("role-modal-close").addEventListener("click", closeRoleModal);
+  $("role-modal-cancel").addEventListener("click", closeRoleModal);
+  $("role-modal-save").addEventListener("click", saveRole);
+  $("role-options").addEventListener("click", (e) => {
+    const pick = e.target.closest("[data-pick-role]");
+    if (pick) pickRole(pick.dataset.pickRole);
+  });
+  roleModal.addEventListener("click", (e) => {
+    if (e.target.id === "role-modal") closeRoleModal();
   });
 }
 

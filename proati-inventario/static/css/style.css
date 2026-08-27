@@ -424,6 +424,12 @@ table.schedule {
   cursor: pointer;
 }
 .btn-sm:hover { border-color: var(--pastel-blue); color: var(--pastel-blue); }
+.btn-ok {
+  border-color: var(--pastel-green);
+  color: var(--pastel-green);
+}
+.btn-ok:hover { background: var(--pastel-green-bg); }
+.badge-ok { background: var(--pastel-green-bg); color: var(--pastel-green); border: 1px solid rgba(168, 230, 200, .2); }
 .btn-save-role {
   border-color: var(--pastel-green);
   background: var(--pastel-green-bg);
@@ -431,6 +437,36 @@ table.schedule {
   font-weight: 700;
 }
 .btn-save-role:hover { background: rgba(168, 230, 200, .18); color: var(--pastel-green); }
+.role-options {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 8px;
+}
+.role-option {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  padding: 12px 14px;
+  border: 1px solid var(--border2);
+  border-radius: 8px;
+  background: var(--surface2);
+  color: var(--text);
+  cursor: pointer;
+  text-align: left;
+}
+.role-option:hover { border-color: var(--pastel-green); }
+.role-option.selected {
+  border-color: var(--pastel-green);
+  background: var(--pastel-green-bg);
+}
+.role-check {
+  color: var(--pastel-green);
+  font-weight: 700;
+  opacity: 0;
+}
+.role-option.selected .role-check { opacity: 1; }
 .btn-warning {
   border-color: rgba(240, 230, 168, .45);
   background: var(--pastel-yellow-bg);
