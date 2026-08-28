@@ -230,7 +230,7 @@ MAINTENANCE_STATUSES = [
 TAB_MODELS = {
     "regular": ["Multilaser", "Positivo", "Chromebook"],
     "tecnico": ["ThinkPad", "Positivo"],
-    "manutencao": ["Multilaser", "Positivo", "Chromebook"],
+    "manutencao": ["Multilaser", "Multilaser T2040", "Positivo", "Chromebook"],
     "manutencao_tecnico": ["ThinkPad", "Positivo"],
 }
 MAINTENANCE_MODELS = TAB_MODELS

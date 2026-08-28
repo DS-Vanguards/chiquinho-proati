@@ -2,7 +2,7 @@ const TABS = {
   tablets: { label: "Tablets", kind: "inventory", skipStatus: true, fixedModel: true },
   regular: { label: "Regular", kind: "inventory", models: ["Multilaser", "Positivo", "Chromebook"] },
   tecnico: { label: "Técnico", kind: "inventory", models: ["ThinkPad", "Positivo"] },
-  manutencao: { label: "Manutenção", kind: "maintenance", models: ["Multilaser", "Positivo", "Chromebook"] },
+  manutencao: { label: "Manutenção", kind: "maintenance", models: ["Multilaser", "Multilaser T2040", "Positivo", "Chromebook"] },
   manutencao_tecnico: { label: "Manutenção Técnico", kind: "maintenance", models: ["ThinkPad", "Positivo"] },
   gestao: { label: "Gestão", kind: "gestao" },
   gestao_tablet: { label: "Gestão Tablet", kind: "gestao" },
@@ -19,6 +19,7 @@ const state = {
   detailsItem: null,
   detailsFilter: "",
   modelFilter: "",
+  statusFilter: "",
 };
 
 function $(id) {
@@ -97,52 +98,112 @@ function tabModels() {
   return currentMeta().models || (window.PROATI.tabModels || {})[state.tab] || [];
 }
 
-function visibleItems(items) {
-  if (!state.modelFilter) return items;
-  return items.filter((item) => item.modelo === state.modelFilter);
+function tabStatuses() {
+  if (!canFilterStatus()) return [];
+  if (isMaintenance()) return window.PROATI.maintenanceStatuses || [];
+  return window.PROATI.inventoryStatuses || [];
 }
 
-function closeModelFilterMenu() {
-  const menu = $("model-filter-menu");
+function canFilterStatus() {
+  return ["regular", "tecnico", "manutencao", "manutencao_tecnico"].includes(state.tab);
+}
+
+function visibleItems(items) {
+  return items.filter((item) => {
+    if (state.modelFilter && item.modelo !== state.modelFilter) return false;
+    if (state.statusFilter && item.status !== state.statusFilter) return false;
+    return true;
+  });
+}
+
+function closeFilterMenu(id) {
+  const menu = $(id);
   if (menu) menu.hidden = true;
 }
 
-function applyModelFilter(model) {
-  state.modelFilter = model || "";
-  closeModelFilterMenu();
+function closeFilterMenus() {
+  closeFilterMenu("model-filter-menu");
+  closeFilterMenu("status-filter-menu");
+}
+
+function closeModelFilterMenu() {
+  closeFilterMenu("model-filter-menu");
+}
+
+function applyColumnFilters() {
+  closeFilterMenus();
   const items = visibleItems(state.items);
   renderStats(items);
   renderHead();
   renderRows(items);
 }
 
-function openModelFilterMenu(anchor) {
-  const menu = $("model-filter-menu");
-  const models = tabModels();
-  if (!menu || !models.length) return;
-  const options = [{ value: "", label: "Todos" }].concat(
-    models.map((model) => ({ value: model, label: model }))
-  );
+function applyModelFilter(model) {
+  state.modelFilter = model || "";
+  applyColumnFilters();
+}
+
+function applyStatusFilter(status) {
+  state.statusFilter = status || "";
+  applyColumnFilters();
+}
+
+function fillFilterMenu(menu, options, activeValue, dataAttr) {
   menu.innerHTML = options
     .map((option) => {
-      const active = state.modelFilter === option.value ? " active" : "";
-      return `<button class="th-filter-option${active}" type="button" data-model-filter="${escapeHtml(option.value)}">${escapeHtml(option.label)}</button>`;
+      const active = activeValue === option.value ? " active" : "";
+      return `<button class="th-filter-option${active}" type="button" data-${dataAttr}="${escapeHtml(option.value)}">${escapeHtml(option.label)}</button>`;
     })
     .join("");
+}
+
+function positionFilterMenu(menu, anchor) {
   const rect = anchor.getBoundingClientRect();
   menu.style.top = `${Math.round(rect.bottom + 4)}px`;
   menu.style.left = `${Math.round(rect.left)}px`;
   menu.hidden = false;
 }
 
-function toggleModelFilterMenu(anchor) {
+function openModelFilterMenu(anchor) {
   const menu = $("model-filter-menu");
+  const models = tabModels();
+  if (!menu || !models.length) return;
+  closeFilterMenu("status-filter-menu");
+  const options = [{ value: "", label: "Todos" }].concat(
+    models.map((model) => ({ value: model, label: model }))
+  );
+  fillFilterMenu(menu, options, state.modelFilter, "model-filter");
+  positionFilterMenu(menu, anchor);
+}
+
+function openStatusFilterMenu(anchor) {
+  const menu = $("status-filter-menu");
+  const statuses = tabStatuses();
+  if (!menu || !statuses.length) return;
+  closeFilterMenu("model-filter-menu");
+  const options = [{ value: "", label: "Todos" }].concat(
+    statuses.map((status) => ({ value: status, label: status }))
+  );
+  fillFilterMenu(menu, options, state.statusFilter, "status-filter");
+  positionFilterMenu(menu, anchor);
+}
+
+function toggleFilterMenu(menuId, openFn, anchor) {
+  const menu = $(menuId);
   if (!menu) return;
   if (!menu.hidden) {
-    closeModelFilterMenu();
+    closeFilterMenus();
     return;
   }
-  openModelFilterMenu(anchor);
+  openFn(anchor);
+}
+
+function toggleModelFilterMenu(anchor) {
+  toggleFilterMenu("model-filter-menu", openModelFilterMenu, anchor);
+}
+
+function toggleStatusFilterMenu(anchor) {
+  toggleFilterMenu("status-filter-menu", openStatusFilterMenu, anchor);
 }
 
 function badgeClass(status) {
@@ -230,6 +291,12 @@ function renderHead() {
         <button class="th-filter-btn" type="button" id="model-filter-btn">${escapeHtml(modelLabel)} <span class="th-filter-caret">▾</span></button>
       </th>`
     : `<th class="th-tab">Modelo equipamento</th>`;
+  const statusLabel = state.statusFilter ? `Status: ${state.statusFilter}` : "Status";
+  const statusTh = canFilterStatus()
+    ? `<th style="text-align:center" class="th-filter">
+        <button class="th-filter-btn" type="button" id="status-filter-btn">${escapeHtml(statusLabel)} <span class="th-filter-caret">▾</span></button>
+      </th>`
+    : `<th style="text-align:center">Status</th>`;
   $("equip-head").innerHTML = `<tr>
     <th class="th-n">#</th>
     ${modelTh}
@@ -237,7 +304,7 @@ function renderHead() {
     <th>Numeração</th>
     ${isTecnico() ? `<th style="text-align:center">S/N Patrimônio</th>` : ""}
     ${maintenance ? `<th class="th-note">Descrição do problema</th>` : ""}
-    ${skipStatus ? "" : `<th style="text-align:center">Status</th>`}
+    ${skipStatus ? "" : statusTh}
     ${window.PROATI.canEdit ? `<th style="width:140px">Ações</th>` : ""}
   </tr>`;
 }
@@ -326,7 +393,7 @@ function escapeHtml(value) {
 async function loadEquipment() {
   const data = await request(`/api/equipamentos?tab=${encodeURIComponent(state.tab)}`);
   state.items = data.itens || [];
-  closeModelFilterMenu();
+  closeFilterMenus();
   const items = visibleItems(state.items);
   renderStats(items);
   renderHead();
@@ -337,7 +404,8 @@ async function loadReports() {
   const data = await request(`/api/relatorios?tab=${encodeURIComponent(state.tab)}`);
   state.items = data.itens || [];
   state.modelFilter = "";
-  closeModelFilterMenu();
+  state.statusFilter = "";
+  closeFilterMenus();
   renderStats(state.items);
   renderHead();
   renderRows(state.items);
@@ -964,6 +1032,7 @@ function showView(tab) {
   }
   $("tab-label").textContent = currentMeta().label.toUpperCase();
   state.modelFilter = "";
+  state.statusFilter = "";
   syncAddButton();
   loadTab().catch((err) => showToast("✘ " + err.message));
 }
@@ -993,10 +1062,16 @@ if (addBtn) {
   });
 }
 $("equip-head").addEventListener("click", (e) => {
-  const btn = e.target.closest("#model-filter-btn");
-  if (btn) {
+  const modelBtn = e.target.closest("#model-filter-btn");
+  const statusBtn = e.target.closest("#status-filter-btn");
+  if (modelBtn) {
     e.stopPropagation();
-    toggleModelFilterMenu(btn);
+    toggleModelFilterMenu(modelBtn);
+    return;
+  }
+  if (statusBtn) {
+    e.stopPropagation();
+    toggleStatusFilterMenu(statusBtn);
   }
 });
 const modelFilterMenu = $("model-filter-menu");
@@ -1008,11 +1083,19 @@ if (modelFilterMenu) {
     applyModelFilter(option.dataset.modelFilter || "");
   });
 }
+const statusFilterMenu = $("status-filter-menu");
+if (statusFilterMenu) {
+  statusFilterMenu.addEventListener("click", (e) => {
+    const option = e.target.closest("[data-status-filter]");
+    if (!option) return;
+    e.stopPropagation();
+    applyStatusFilter(option.dataset.statusFilter || "");
+  });
+}
 document.addEventListener("click", (e) => {
-  const menu = $("model-filter-menu");
-  if (!menu || menu.hidden) return;
   if (e.target.closest("#model-filter-menu") || e.target.closest("#model-filter-btn")) return;
-  closeModelFilterMenu();
+  if (e.target.closest("#status-filter-menu") || e.target.closest("#status-filter-btn")) return;
+  closeFilterMenus();
 });
 $("modal-close").addEventListener("click", closeModal);
 $("modal-cancel").addEventListener("click", closeModal);
