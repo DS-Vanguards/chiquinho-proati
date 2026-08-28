@@ -140,6 +140,7 @@ function renderHead() {
       <th>Quantidade atual</th>
       <th>Sala</th>
       <th>Professor</th>
+      <th style="text-align:center">Entregues</th>
       <th style="text-align:center">Transferências</th>
       <th style="text-align:center">Status</th>
       ${showActionsColumn() ? `<th style="width:220px">Ações</th>` : ""}
@@ -164,7 +165,7 @@ function renderRows(items) {
   if (isGestao()) {
     const actionsOn = showActionsColumn();
     if (!items.length) {
-      body.innerHTML = `<tr><td colspan="${actionsOn ? 9 : 8}" class="empty">Nenhum relatório registrado.</td></tr>`;
+      body.innerHTML = `<tr><td colspan="${actionsOn ? 10 : 9}" class="empty">Nenhum relatório registrado.</td></tr>`;
       return;
     }
     body.innerHTML = items
@@ -177,7 +178,9 @@ function renderRows(items) {
         const actions = actionsOn
           ? `<td class="actions-cell">${buttons.join("")}</td>`
           : "";
-        const transferencias = (item.movimentos || []).filter((move) => move.tipo === "Transferido").length;
+        const movimentos = item.movimentos || [];
+        const entregues = movimentos.filter((move) => move.tipo === "Entregue").length;
+        const transferencias = movimentos.filter((move) => move.tipo === "Transferido").length;
         return `<tr>
           <td class="td-num"><span class="num-badge">${idx + 1}</span></td>
           <td class="td-tab">${escapeHtml(item.modelos)}</td>
@@ -185,6 +188,7 @@ function renderRows(items) {
           <td>${escapeHtml(item.quantidade_atual)}</td>
           <td>${escapeHtml(item.sala)}</td>
           <td>${escapeHtml(item.professor)}</td>
+          <td style="text-align:center">${entregues}</td>
           <td style="text-align:center">${transferencias}</td>
           <td style="text-align:center"><span class="badge ${badgeClass(item.status)}">${escapeHtml(item.status)}</span></td>
           ${actions}
