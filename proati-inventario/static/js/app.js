@@ -83,25 +83,47 @@ function visibleItems(items) {
   return items.filter((item) => item.modelo === state.modelFilter);
 }
 
-function syncModelFilter() {
-  const bar = $("model-filter");
-  if (!bar) return;
+function closeModelFilterMenu() {
+  const menu = $("model-filter-menu");
+  if (menu) menu.hidden = true;
+}
+
+function applyModelFilter(model) {
+  state.modelFilter = model || "";
+  closeModelFilterMenu();
+  const items = visibleItems(state.items);
+  renderStats(items);
+  renderHead();
+  renderRows(items);
+}
+
+function openModelFilterMenu(anchor) {
+  const menu = $("model-filter-menu");
   const models = tabModels();
-  if (!models.length) {
-    bar.hidden = true;
-    bar.innerHTML = "";
-    state.modelFilter = "";
-    return;
-  }
-  bar.hidden = false;
-  const options = [""].concat(models);
-  bar.innerHTML = options
-    .map((model) => {
-      const label = model || "Todos";
-      const active = state.modelFilter === model ? " active" : "";
-      return `<button class="details-tab${active}" type="button" data-model-filter="${escapeHtml(model)}">${escapeHtml(label)}</button>`;
+  if (!menu || !models.length) return;
+  const options = [{ value: "", label: "Todos" }].concat(
+    models.map((model) => ({ value: model, label: model }))
+  );
+  menu.innerHTML = options
+    .map((option) => {
+      const active = state.modelFilter === option.value ? " active" : "";
+      return `<button class="th-filter-option${active}" type="button" data-model-filter="${escapeHtml(option.value)}">${escapeHtml(option.label)}</button>`;
     })
     .join("");
+  const rect = anchor.getBoundingClientRect();
+  menu.style.top = `${Math.round(rect.bottom + 4)}px`;
+  menu.style.left = `${Math.round(rect.left)}px`;
+  menu.hidden = false;
+}
+
+function toggleModelFilterMenu(anchor) {
+  const menu = $("model-filter-menu");
+  if (!menu) return;
+  if (!menu.hidden) {
+    closeModelFilterMenu();
+    return;
+  }
+  openModelFilterMenu(anchor);
 }
 
 function badgeClass(status) {
@@ -182,9 +204,16 @@ function renderHead() {
   }
   const maintenance = isMaintenance();
   const skipStatus = currentMeta().skipStatus;
+  const canFilter = tabModels().length > 0;
+  const modelLabel = state.modelFilter ? `Modelo: ${state.modelFilter}` : "Modelo equipamento";
+  const modelTh = canFilter
+    ? `<th class="th-tab th-filter">
+        <button class="th-filter-btn" type="button" id="model-filter-btn">${escapeHtml(modelLabel)} <span class="th-filter-caret">▾</span></button>
+      </th>`
+    : `<th class="th-tab">Modelo equipamento</th>`;
   $("equip-head").innerHTML = `<tr>
     <th class="th-n">#</th>
-    <th class="th-tab">Modelo equipamento</th>
+    ${modelTh}
     <th>Serial equipamento</th>
     <th>Numeração</th>
     ${maintenance ? `<th class="th-note">Descrição do problema</th>` : ""}
@@ -269,7 +298,7 @@ function escapeHtml(value) {
 async function loadEquipment() {
   const data = await request(`/api/equipamentos?tab=${encodeURIComponent(state.tab)}`);
   state.items = data.itens || [];
-  syncModelFilter();
+  closeModelFilterMenu();
   const items = visibleItems(state.items);
   renderStats(items);
   renderHead();
@@ -280,7 +309,7 @@ async function loadReports() {
   const data = await request(`/api/relatorios?tab=${encodeURIComponent(state.tab)}`);
   state.items = data.itens || [];
   state.modelFilter = "";
-  syncModelFilter();
+  closeModelFilterMenu();
   renderStats(state.items);
   renderHead();
   renderRows(state.items);
@@ -923,19 +952,28 @@ if (addBtn) {
     else openModal(null);
   });
 }
-const modelFilter = $("model-filter");
-if (modelFilter) {
-  modelFilter.addEventListener("click", (e) => {
-    const btn = e.target.closest("[data-model-filter]");
-    if (!btn) return;
-    state.modelFilter = btn.dataset.modelFilter || "";
-    syncModelFilter();
-    const items = visibleItems(state.items);
-    renderStats(items);
-    renderHead();
-    renderRows(items);
+$("equip-head").addEventListener("click", (e) => {
+  const btn = e.target.closest("#model-filter-btn");
+  if (btn) {
+    e.stopPropagation();
+    toggleModelFilterMenu(btn);
+  }
+});
+const modelFilterMenu = $("model-filter-menu");
+if (modelFilterMenu) {
+  modelFilterMenu.addEventListener("click", (e) => {
+    const option = e.target.closest("[data-model-filter]");
+    if (!option) return;
+    e.stopPropagation();
+    applyModelFilter(option.dataset.modelFilter || "");
   });
 }
+document.addEventListener("click", (e) => {
+  const menu = $("model-filter-menu");
+  if (!menu || menu.hidden) return;
+  if (e.target.closest("#model-filter-menu") || e.target.closest("#model-filter-btn")) return;
+  closeModelFilterMenu();
+});
 $("modal-close").addEventListener("click", closeModal);
 $("modal-cancel").addEventListener("click", closeModal);
 $("equip-modal").addEventListener("click", (e) => {
