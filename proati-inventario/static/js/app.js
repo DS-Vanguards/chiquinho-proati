@@ -1,9 +1,9 @@
 const TABS = {
   tablets: { label: "Tablets", kind: "inventory", skipStatus: true, fixedModel: true },
-  regular: { label: "Regular", kind: "inventory" },
-  tecnico: { label: "Técnico", kind: "inventory" },
-  manutencao: { label: "Manutenção", kind: "maintenance" },
-  manutencao_tecnico: { label: "Manutenção Técnico", kind: "maintenance" },
+  regular: { label: "Regular", kind: "inventory", models: ["Multilaser", "Positivo", "Chromebook"] },
+  tecnico: { label: "Técnico", kind: "inventory", models: ["ThinkPad", "Positivo"] },
+  manutencao: { label: "Manutenção", kind: "maintenance", models: ["Multilaser", "Positivo", "Chromebook"] },
+  manutencao_tecnico: { label: "Manutenção Técnico", kind: "maintenance", models: ["ThinkPad", "Positivo"] },
   gestao: { label: "Gestão", kind: "gestao" },
   gestao_tablet: { label: "Gestão Tablet", kind: "gestao" },
   gestao_tecnico: { label: "Gestão Técnico", kind: "gestao" },
@@ -18,6 +18,7 @@ const state = {
   pickedRole: "",
   detailsItem: null,
   detailsFilter: "",
+  modelFilter: "",
 };
 
 function $(id) {
@@ -71,6 +72,36 @@ function isMaintenance() {
 
 function isGestao() {
   return currentMeta().kind === "gestao";
+}
+
+function tabModels() {
+  return currentMeta().models || (window.PROATI.tabModels || {})[state.tab] || [];
+}
+
+function visibleItems(items) {
+  if (!state.modelFilter) return items;
+  return items.filter((item) => item.modelo === state.modelFilter);
+}
+
+function syncModelFilter() {
+  const bar = $("model-filter");
+  if (!bar) return;
+  const models = tabModels();
+  if (!models.length) {
+    bar.hidden = true;
+    bar.innerHTML = "";
+    state.modelFilter = "";
+    return;
+  }
+  bar.hidden = false;
+  const options = [""].concat(models);
+  bar.innerHTML = options
+    .map((model) => {
+      const label = model || "Todos";
+      const active = state.modelFilter === model ? " active" : "";
+      return `<button class="details-tab${active}" type="button" data-model-filter="${escapeHtml(model)}">${escapeHtml(label)}</button>`;
+    })
+    .join("");
 }
 
 function badgeClass(status) {
@@ -238,14 +269,18 @@ function escapeHtml(value) {
 async function loadEquipment() {
   const data = await request(`/api/equipamentos?tab=${encodeURIComponent(state.tab)}`);
   state.items = data.itens || [];
-  renderStats(state.items);
+  syncModelFilter();
+  const items = visibleItems(state.items);
+  renderStats(items);
   renderHead();
-  renderRows(state.items);
+  renderRows(items);
 }
 
 async function loadReports() {
   const data = await request(`/api/relatorios?tab=${encodeURIComponent(state.tab)}`);
   state.items = data.itens || [];
+  state.modelFilter = "";
+  syncModelFilter();
   renderStats(state.items);
   renderHead();
   renderRows(state.items);
@@ -273,12 +308,29 @@ function syncAddButton() {
 
 function openModal(item) {
   const meta = currentMeta();
+  const models = tabModels();
+  const useSelect = models.length > 0;
   $("modal-title").textContent = item ? "Alterar equipamento" : "Novo equipamento";
   $("equip-id").value = item ? item.id : "";
-  $("f-modelo").value = meta.fixedModel ? window.PROATI.tabletModel : item?.modelo || "";
-  $("f-modelo").readOnly = !!meta.fixedModel;
-  $("f-modelo").required = !meta.fixedModel;
-  $("f-modelo").classList.toggle("fixed", !!meta.fixedModel);
+  $("f-modelo").hidden = useSelect;
+  $("f-modelo").required = !useSelect && !meta.fixedModel;
+  $("f-modelo").disabled = useSelect;
+  $("f-modelo-select").hidden = !useSelect;
+  $("f-modelo-select").required = useSelect;
+  $("f-modelo-select").disabled = !useSelect;
+  if (useSelect) {
+    const choices = models.slice();
+    if (item?.modelo && !choices.includes(item.modelo)) choices.push(item.modelo);
+    $("f-modelo-select").innerHTML =
+      `<option value="">Selecione o modelo</option>` +
+      choices.map((model) => `<option value="${escapeHtml(model)}">${escapeHtml(model)}</option>`).join("");
+    $("f-modelo-select").value = item?.modelo || "";
+    $("f-modelo").value = item?.modelo || "";
+  } else {
+    $("f-modelo").value = meta.fixedModel ? window.PROATI.tabletModel : item?.modelo || "";
+    $("f-modelo").readOnly = !!meta.fixedModel;
+    $("f-modelo").classList.toggle("fixed", !!meta.fixedModel);
+  }
   $("f-serial").value = item?.serial || "";
   $("f-numeracao").value = item?.numeracao || "";
   $("f-problema").value = item?.problema || "";
@@ -301,7 +353,7 @@ async function saveEquipment(event) {
   const id = $("equip-id").value;
   const payload = {
     tab: state.tab,
-    modelo: $("f-modelo").value.trim(),
+    modelo: $("f-modelo-select").hidden ? $("f-modelo").value.trim() : $("f-modelo-select").value.trim(),
     serial: $("f-serial").value.trim(),
     numeracao: $("f-numeracao").value.trim(),
     problema: $("f-problema").value.trim(),
@@ -842,6 +894,7 @@ function showView(tab) {
     return;
   }
   $("tab-label").textContent = currentMeta().label.toUpperCase();
+  state.modelFilter = "";
   syncAddButton();
   loadTab().catch((err) => showToast("✘ " + err.message));
 }
@@ -868,6 +921,19 @@ if (addBtn) {
   addBtn.addEventListener("click", () => {
     if (isGestao()) openReportKindModal();
     else openModal(null);
+  });
+}
+const modelFilter = $("model-filter");
+if (modelFilter) {
+  modelFilter.addEventListener("click", (e) => {
+    const btn = e.target.closest("[data-model-filter]");
+    if (!btn) return;
+    state.modelFilter = btn.dataset.modelFilter || "";
+    syncModelFilter();
+    const items = visibleItems(state.items);
+    renderStats(items);
+    renderHead();
+    renderRows(items);
   });
 }
 $("modal-close").addEventListener("click", closeModal);

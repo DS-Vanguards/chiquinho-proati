@@ -37,6 +37,7 @@
     <button class="save-btn" id="btn-add" type="button">+ ADICIONAR</button>
     {% endif %}
   </div>
+  <div class="details-tabs" id="model-filter" hidden></div>
   <div class="table-wrap">
     <table class="schedule" id="equip-table">
       <thead id="equip-head"></thead>
@@ -98,6 +99,7 @@
       <input type="hidden" id="equip-id">
       <label id="label-modelo">Modelo equipamento</label>
       <input class="form-input" id="f-modelo" maxlength="120" placeholder="Ex: ThinkPad, Positivo, Multilaser ou Chromebook">
+      <select class="form-input" id="f-modelo-select" hidden></select>
       <label>Serial equipamento</label>
       <input class="form-input" id="f-serial" required maxlength="120" placeholder="Número de série">
       <label>Numeração</label>
@@ -324,6 +326,7 @@
     tabletModel: {{ TABLET_MODEL | tojson }},
     inventoryStatuses: {{ INVENTORY_STATUSES | tojson }},
     maintenanceStatuses: {{ MAINTENANCE_STATUSES | tojson }},
+    tabModels: {{ TAB_MODELS | tojson }},
     gestaoMoveTypes: {{ GESTAO_MOVE_TYPES | tojson }},
     roles: {{ ASSIGNABLE_ROLES | tojson }},
     roleLabels: {{ ROLE_LABELS | tojson }},

@@ -227,6 +227,13 @@ MAINTENANCE_STATUSES = [
     "Chamado realizado",
     "Aguardando inspeção",
 ]
+TAB_MODELS = {
+    "regular": ["Multilaser", "Positivo", "Chromebook"],
+    "tecnico": ["ThinkPad", "Positivo"],
+    "manutencao": ["Multilaser", "Positivo", "Chromebook"],
+    "manutencao_tecnico": ["ThinkPad", "Positivo"],
+}
+MAINTENANCE_MODELS = TAB_MODELS
 GESTAO_STATUSES = ["Em uso", "Pendente", "Entregues"]
 GESTAO_MOVE_TYPES = ["Transferido", "Entregue", "Coletado transferência"]
 GESTAO_TRANSFER_LIKE = ["Transferido", "Coletado transferência"]

@@ -256,6 +256,10 @@ def normalize_payload(tab: str, data: dict, existing=None):
     if not serial or not numeracao or not modelo:
         return None, "Preencha modelo, serial e numeração."
 
+    allowed_models = config.TAB_MODELS.get(tab) or []
+    if allowed_models and modelo not in allowed_models:
+        return None, "Selecione um modelo válido."
+
     if is_inventory_tab(tab) and not is_tablet_like_tab(tab):
         if status not in config.INVENTORY_STATUSES:
             return None, "Selecione um status válido."
@@ -291,6 +295,7 @@ def inject_globals():
         "TAB_ICONS": config.TAB_ICONS,
         "INVENTORY_STATUSES": config.INVENTORY_STATUSES,
         "MAINTENANCE_STATUSES": config.MAINTENANCE_STATUSES,
+        "TAB_MODELS": config.TAB_MODELS,
         "GESTAO_MOVE_TYPES": config.GESTAO_MOVE_TYPES,
         "csrf_token": generate_csrf,
     }
