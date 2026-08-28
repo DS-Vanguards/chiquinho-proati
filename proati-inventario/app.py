@@ -696,26 +696,41 @@ def api_alter_report(item_id):
     tipo = (data.get("tipo") or "").strip()
     if not quantidade:
         return jsonify({"erro": "Informe uma quantidade válida."}), 400
-    if quantidade > int(item.quantidade_atual or 0):
-        return jsonify({"erro": "A quantidade não pode ser maior que a quantidade atual."}), 400
     if tipo not in config.GESTAO_MOVE_TYPES:
-        return jsonify({"erro": "Selecione Transferido ou Entregue."}), 400
+        return jsonify({"erro": "Selecione uma situação válida."}), 400
 
-    destinatario = (data.get("destinatario") or "").strip()[:120]
+    atual = int(item.quantidade_atual or 0)
+    inicial = int(item.quantidade or 0)
+    pessoa = (data.get("remetente") or data.get("destinatario") or "").strip()[:120]
     sala_destino = (data.get("sala_destino") or "").strip()[:80]
-    if tipo == "Transferido":
-        if not destinatario or not sala_destino:
-            return jsonify({"erro": "Informe o destinatário e a sala de destino."}), 400
-        item.destinatario = destinatario
+    if tipo in config.GESTAO_TRANSFER_LIKE:
+        rotulo = "remetente" if tipo == "Coletado transferência" else "destinatário"
+        if not pessoa or not sala_destino:
+            return jsonify({"erro": f"Informe o {rotulo} e a sala de destino."}), 400
+
+    if tipo == "Coletado transferência":
+        if atual + quantidade > inicial:
+            return jsonify(
+                {"erro": "A quantidade coletada não pode ultrapassar a quantidade inicial."}
+            ), 400
+        item.quantidade_atual = atual + quantidade
+        item.remetente = pessoa
         item.sala_destino = sala_destino
-    item.quantidade_atual = int(item.quantidade_atual) - quantidade
+    else:
+        if quantidade > atual:
+            return jsonify({"erro": "A quantidade não pode ser maior que a quantidade atual."}), 400
+        item.quantidade_atual = atual - quantidade
+        if tipo == "Transferido":
+            item.destinatario = pessoa
+            item.sala_destino = sala_destino
+
     item.alterado = True
     item.updated_at = datetime.utcnow()
     log_relatorio_movimento(
         item,
         tipo,
         quantidade=quantidade,
-        destinatario=destinatario,
+        destinatario=pessoa,
         sala_destino=sala_destino,
         detalhe=f"Quantidade atual: {item.quantidade_atual}",
     )
@@ -723,9 +738,9 @@ def api_alter_report(item_id):
     return jsonify({"item": item.to_dict(viewer=current_user)})
 
 
-@app.route("/api/relatorios/<int:item_id>/finalizar", methods=["POST"])
+@app.route("/api/relatorios/<int:item_id>/devolver", methods=["POST"])
 @inventory_required
-def api_finish_report(item_id):
+def api_return_report(item_id):
     denied_write = deny_report_write()
     if denied_write:
         return denied_write
@@ -733,23 +748,21 @@ def api_finish_report(item_id):
     if error:
         return error
     if item.professor_id != current_user.id:
-        return jsonify({"erro": "Só quem criou o relatório pode finalizá-lo."}), 403
-    if not item.alterado:
-        return jsonify({"erro": "Finalize somente após alterar o relatório."}), 400
+        return jsonify({"erro": "Só quem criou o relatório pode devolvê-lo."}), 403
     if item.status != "Em uso":
-        return jsonify({"erro": "Este relatório já foi finalizado."}), 400
+        return jsonify({"erro": "Este relatório já foi devolvido."}), 400
 
     data = request.get_json(silent=True) or {}
-    todos_entregues = bool(data.get("todos_entregues"))
-    item.status = "Entregues" if todos_entregues else "Pendente"
+    ainda_com_destinatario = bool(data.get("ainda_com_destinatario")) and bool(item.destinatario)
+    item.status = "Pendente" if ainda_com_destinatario else "Entregues"
     item.updated_at = datetime.utcnow()
     log_relatorio_movimento(
         item,
-        "Finalizado",
+        "Devolução",
         detalhe=(
-            "Todos foram entregues"
-            if todos_entregues
-            else "Ainda possui notebooks com o outro professor"
+            f"Notebooks ainda com {item.destinatario}"
+            if ainda_com_destinatario
+            else "Relatório de devolução"
         ),
     )
     db.session.commit()

@@ -160,6 +160,7 @@ class Relatorio(db.Model):
     status = db.Column(db.String(40), default="Em uso", nullable=False)
     alterado = db.Column(db.Boolean, default=False, nullable=False)
     destinatario = db.Column(db.String(120), nullable=True)
+    remetente = db.Column(db.String(120), nullable=True)
     sala_destino = db.Column(db.String(80), nullable=True)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
@@ -167,18 +168,7 @@ class Relatorio(db.Model):
     def to_dict(self, *, viewer=None) -> dict:
         mine = bool(viewer and self.professor_id == viewer.id)
         can_write = bool(viewer and viewer.can_write_reports())
-        can_alter = (
-            mine
-            and can_write
-            and self.status == "Em uso"
-            and int(self.quantidade_atual or 0) > 0
-        )
-        can_finish = (
-            mine
-            and can_write
-            and bool(self.alterado)
-            and self.status == "Em uso"
-        )
+        can_alter = mine and can_write and self.status == "Em uso"
         can_delete = bool(viewer and viewer.can_manage_users())
         movimentos = [
             movimento.to_dict()
@@ -196,10 +186,10 @@ class Relatorio(db.Model):
             "status": self.status,
             "alterado": bool(self.alterado),
             "destinatario": self.destinatario or "",
+            "remetente": self.remetente or "",
             "sala_destino": self.sala_destino or "",
             "mine": mine,
             "can_alter": can_alter,
-            "can_finish": can_finish,
             "can_delete": can_delete,
             "movimentos": movimentos,
         }
@@ -304,6 +294,12 @@ def ensure_schema():
             )
         )
         db.session.commit()
+
+    if "relatorios" in inspector.get_table_names():
+        relatorio_cols = {column["name"] for column in inspector.get_columns("relatorios")}
+        if "remetente" not in relatorio_cols:
+            db.session.execute(text("ALTER TABLE relatorios ADD COLUMN remetente VARCHAR(120)"))
+            db.session.commit()
     purge_expired_relatorios()
 
 

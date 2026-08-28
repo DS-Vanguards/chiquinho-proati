@@ -228,7 +228,8 @@ MAINTENANCE_STATUSES = [
     "Aguardando inspeção",
 ]
 GESTAO_STATUSES = ["Em uso", "Pendente", "Entregues"]
-GESTAO_MOVE_TYPES = ["Transferido", "Entregue"]
+GESTAO_MOVE_TYPES = ["Transferido", "Entregue", "Coletado transferência"]
+GESTAO_TRANSFER_LIKE = ["Transferido", "Coletado transferência"]
 RELATORIO_TTL_DAYS = 21
 
 # Metadados internos de layout

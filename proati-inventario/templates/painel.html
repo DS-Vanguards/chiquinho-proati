@@ -121,7 +121,7 @@
 <div class="modal-overlay" id="report-modal">
   <div class="modal">
     <div class="modal-header">
-      <span class="modal-title">Adicionar Relatório</span>
+      <span class="modal-title" id="report-modal-title">Relatório de retirada</span>
       <button class="modal-close-btn" type="button" id="report-modal-close">✕</button>
     </div>
     <form class="modal-body" id="report-form">
@@ -148,14 +148,15 @@
     <form class="modal-body" id="report-alter-form">
       <input type="hidden" id="ra-id">
       <label for="ra-quantidade">Quantidade</label>
-      <input class="form-input" id="ra-quantidade" type="number" min="1" step="1" required placeholder="Quantidade a baixar">
+      <input class="form-input" id="ra-quantidade" type="number" min="1" step="1" required placeholder="Quantidade">
       <label for="ra-tipo">Situação</label>
       <select class="form-input" id="ra-tipo" required>
         <option value="Entregue">Entregue</option>
         <option value="Transferido">Transferido</option>
+        <option value="Coletado transferência">Coletado transferência</option>
       </select>
       <div id="wrap-destinatario" hidden>
-        <label for="ra-destinatario">Destinatário</label>
+        <label for="ra-destinatario" id="ra-person-label">Destinatário</label>
         <input class="form-input" id="ra-destinatario" maxlength="120" placeholder="Nome do professor">
       </div>
       <div id="wrap-sala-destino" hidden>
@@ -170,29 +171,51 @@
   </div>
 </div>
 
-<div class="modal-overlay" id="report-finish-modal">
+<div class="modal-overlay" id="report-kind-modal">
   <div class="modal">
     <div class="modal-header">
-      <span class="modal-title">Finalizar relatório</span>
-      <button class="modal-close-btn" type="button" id="report-finish-close">✕</button>
+      <span class="modal-title">Adicionar Relatório</span>
+      <button class="modal-close-btn" type="button" id="report-kind-close">✕</button>
     </div>
     <div class="modal-body">
-      <input type="hidden" id="rf-id">
-      <p class="admin-hint">Marque a situação dos notebooks deste relatório.</p>
-      <div class="role-options" id="finish-options">
-        <button class="role-option selected" type="button" data-finish="all">
-          <span>Todos foram entregues</span>
-          <span class="role-check">✓</span>
+      <p class="admin-hint">Qual tipo de relatório deseja criar?</p>
+      <div class="role-options">
+        <button class="role-option" type="button" data-report-kind="retirada">
+          <span>Relatório de retirada</span>
         </button>
-        <button class="role-option" type="button" data-finish="pending">
-          <span>Ainda possui notebooks com o outro professor</span>
-          <span class="role-check">✓</span>
+        <button class="role-option" type="button" data-report-kind="devolucao">
+          <span>Relatório de devolução</span>
         </button>
       </div>
     </div>
     <div class="modal-footer">
-      <button class="close-footer-btn" type="button" id="report-finish-cancel">CANCELAR</button>
-      <button class="print-btn" type="button" id="report-finish-save">CONFIRMAR</button>
+      <button class="close-footer-btn" type="button" id="report-kind-cancel">CANCELAR</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="report-return-modal">
+  <div class="modal">
+    <div class="modal-header">
+      <span class="modal-title">Relatório de devolução</span>
+      <button class="modal-close-btn" type="button" id="report-return-close">✕</button>
+    </div>
+    <form class="modal-body" id="report-return-form">
+      <input type="hidden" id="rd-id">
+      <label for="rd-modelos">Modelos</label>
+      <input class="form-input fixed" id="rd-modelos" maxlength="200" readonly>
+      <label for="rd-quantidade">Quantidade</label>
+      <input class="form-input fixed" id="rd-quantidade" type="number" readonly>
+      <label for="rd-quantidade-atual">Quantidade atual</label>
+      <input class="form-input fixed" id="rd-quantidade-atual" type="number" readonly>
+      <label class="check-row" id="wrap-ainda-com" hidden>
+        <input type="checkbox" id="rd-ainda-com">
+        <span id="rd-ainda-com-label">Os notebooks ainda estão com o destinatário</span>
+      </label>
+    </form>
+    <div class="modal-footer">
+      <button class="close-footer-btn" type="button" id="report-return-cancel">CANCELAR</button>
+      <button class="print-btn" type="submit" form="report-return-form">SALVAR</button>
     </div>
   </div>
 </div>

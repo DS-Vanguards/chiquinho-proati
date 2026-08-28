@@ -16,7 +16,6 @@ const state = {
   assignableRoles: [],
   roleUserId: "",
   pickedRole: "",
-  finishChoice: "all",
 };
 
 function $(id) {
@@ -141,10 +140,9 @@ function renderHead() {
       <th>Quantidade atual</th>
       <th>Sala</th>
       <th>Professor</th>
-      <th>Destinatário</th>
-      <th>Sala de destino</th>
+      <th style="text-align:center">Transferências</th>
       <th style="text-align:center">Status</th>
-      ${showActionsColumn() ? `<th style="width:280px">Ações</th>` : ""}
+      ${showActionsColumn() ? `<th style="width:220px">Ações</th>` : ""}
     </tr>`;
     return;
   }
@@ -166,7 +164,7 @@ function renderRows(items) {
   if (isGestao()) {
     const actionsOn = showActionsColumn();
     if (!items.length) {
-      body.innerHTML = `<tr><td colspan="${actionsOn ? 10 : 9}" class="empty">Nenhum relatório registrado.</td></tr>`;
+      body.innerHTML = `<tr><td colspan="${actionsOn ? 9 : 8}" class="empty">Nenhum relatório registrado.</td></tr>`;
       return;
     }
     body.innerHTML = items
@@ -175,11 +173,11 @@ function renderRows(items) {
           `<button class="btn-sm btn-more" data-details="${item.id}" type="button" title="Detalhes das alterações">︙</button>`,
         ];
         if (item.can_alter) buttons.push(`<button class="btn-sm" data-alter="${item.id}" type="button">Alterar</button>`);
-        if (item.can_finish) buttons.push(`<button class="btn-sm btn-ok" data-finish="${item.id}" type="button">Finalizado</button>`);
         if (item.can_delete) buttons.push(`<button class="btn-sm btn-danger" data-del-report="${item.id}" type="button">Excluir</button>`);
         const actions = actionsOn
           ? `<td class="actions-cell">${buttons.join("")}</td>`
           : "";
+        const transferencias = (item.movimentos || []).filter((move) => move.tipo === "Transferido").length;
         return `<tr>
           <td class="td-num"><span class="num-badge">${idx + 1}</span></td>
           <td class="td-tab">${escapeHtml(item.modelos)}</td>
@@ -187,8 +185,7 @@ function renderRows(items) {
           <td>${escapeHtml(item.quantidade_atual)}</td>
           <td>${escapeHtml(item.sala)}</td>
           <td>${escapeHtml(item.professor)}</td>
-          <td>${escapeHtml(item.destinatario || "—")}</td>
-          <td>${escapeHtml(item.sala_destino || "—")}</td>
+          <td style="text-align:center">${transferencias}</td>
           <td style="text-align:center"><span class="badge ${badgeClass(item.status)}">${escapeHtml(item.status)}</span></td>
           ${actions}
         </tr>`;
@@ -331,7 +328,20 @@ async function removeEquipment(id) {
   }
 }
 
+function lastOpenReport() {
+  return (state.items || []).find((item) => item.status === "Em uso" && item.mine);
+}
+
+function openReportKindModal() {
+  $("report-kind-modal").classList.add("open");
+}
+
+function closeReportKindModal() {
+  $("report-kind-modal").classList.remove("open");
+}
+
 function openReportModal() {
+  closeReportKindModal();
   $("r-modelos").value = "";
   $("r-quantidade").value = "";
   $("r-sala").value = "";
@@ -354,7 +364,7 @@ async function saveReport(event) {
         sala: $("r-sala").value.trim(),
       }),
     });
-    showToast("✔ Relatório adicionado");
+    showToast("✔ Relatório de retirada adicionado");
     closeReportModal();
     await loadReports();
   } catch (err) {
@@ -362,12 +372,68 @@ async function saveReport(event) {
   }
 }
 
+function openReturnModal() {
+  const item = lastOpenReport();
+  closeReportKindModal();
+  if (!item) {
+    showToast("✘ Não há relatório em uso para devolver.");
+    return;
+  }
+  $("rd-id").value = item.id;
+  $("rd-modelos").value = item.modelos || "";
+  $("rd-quantidade").value = item.quantidade || "";
+  $("rd-quantidade-atual").value = item.quantidade_atual || "";
+  $("rd-ainda-com").checked = false;
+  const hasDest = Boolean(item.destinatario);
+  $("wrap-ainda-com").hidden = !hasDest;
+  $("rd-ainda-com-label").textContent = hasDest
+    ? `Os notebooks ainda estão com ${item.destinatario}`
+    : "Os notebooks ainda estão com o destinatário";
+  $("report-return-modal").classList.add("open");
+}
+
+function closeReturnModal() {
+  $("report-return-modal").classList.remove("open");
+}
+
+async function saveReturnReport(event) {
+  event.preventDefault();
+  const id = $("rd-id").value;
+  try {
+    await request(`/api/relatorios/${id}/devolver`, {
+      method: "POST",
+      body: JSON.stringify({
+        ainda_com_destinatario: Boolean($("rd-ainda-com").checked && !$("wrap-ainda-com").hidden),
+      }),
+    });
+    showToast("✔ Relatório de devolução salvo");
+    closeReturnModal();
+    await loadReports();
+  } catch (err) {
+    showToast("✘ " + err.message);
+  }
+}
+
+function isTransferLike(tipo) {
+  return tipo === "Transferido" || tipo === "Coletado transferência";
+}
+
 function syncTransferFields() {
-  const show = $("ra-tipo").value === "Transferido";
+  const tipo = $("ra-tipo").value;
+  const show = isTransferLike(tipo);
+  const coletado = tipo === "Coletado transferência";
   $("wrap-destinatario").hidden = !show;
   $("wrap-sala-destino").hidden = !show;
   $("ra-destinatario").required = show;
   $("ra-sala-destino").required = show;
+  $("ra-person-label").textContent = coletado ? "Remetente" : "Destinatário";
+  $("ra-quantidade").placeholder = coletado ? "Quantidade a somar" : "Quantidade a baixar";
+  const item = state.items.find((row) => String(row.id) === String($("ra-id").value));
+  if (item) {
+    const atual = Number(item.quantidade_atual) || 0;
+    const inicial = Number(item.quantidade) || 0;
+    $("ra-quantidade").max = coletado ? Math.max(inicial - atual, 1) : Math.max(atual, 1);
+  }
   if (!show) {
     $("ra-destinatario").value = "";
     $("ra-sala-destino").value = "";
@@ -377,7 +443,6 @@ function syncTransferFields() {
 function openAlterModal(item) {
   $("ra-id").value = item.id;
   $("ra-quantidade").value = "";
-  $("ra-quantidade").max = item.quantidade_atual;
   $("ra-tipo").value = "Entregue";
   $("ra-destinatario").value = "";
   $("ra-sala-destino").value = "";
@@ -392,13 +457,16 @@ function closeAlterModal() {
 async function saveAlterReport(event) {
   event.preventDefault();
   const id = $("ra-id").value;
+  const tipo = $("ra-tipo").value;
   const payload = {
     quantidade: $("ra-quantidade").value,
-    tipo: $("ra-tipo").value,
+    tipo,
   };
-  if (payload.tipo === "Transferido") {
-    payload.destinatario = $("ra-destinatario").value.trim();
+  if (isTransferLike(tipo)) {
+    const pessoa = $("ra-destinatario").value.trim();
     payload.sala_destino = $("ra-sala-destino").value.trim();
+    if (tipo === "Coletado transferência") payload.remetente = pessoa;
+    else payload.destinatario = pessoa;
   }
   try {
     await request(`/api/relatorios/${id}/alterar`, {
@@ -407,38 +475,6 @@ async function saveAlterReport(event) {
     });
     showToast("✔ Relatório alterado");
     closeAlterModal();
-    await loadReports();
-  } catch (err) {
-    showToast("✘ " + err.message);
-  }
-}
-
-function pickFinish(choice) {
-  state.finishChoice = choice;
-  document.querySelectorAll("#finish-options .role-option").forEach((btn) => {
-    btn.classList.toggle("selected", btn.dataset.finish === choice);
-  });
-}
-
-function openFinishModal(item) {
-  $("rf-id").value = item.id;
-  pickFinish("all");
-  $("report-finish-modal").classList.add("open");
-}
-
-function closeFinishModal() {
-  $("report-finish-modal").classList.remove("open");
-}
-
-async function saveFinishReport() {
-  const id = $("rf-id").value;
-  try {
-    await request(`/api/relatorios/${id}/finalizar`, {
-      method: "POST",
-      body: JSON.stringify({ todos_entregues: state.finishChoice === "all" }),
-    });
-    showToast(state.finishChoice === "all" ? "✔ Relatório entregue" : "✔ Relatório pendente");
-    closeFinishModal();
     await loadReports();
   } catch (err) {
     showToast("✘ " + err.message);
@@ -466,7 +502,10 @@ function openDetailsModal(item) {
       .map((move) => {
         const extra = [];
         if (move.quantidade) extra.push(`Quantidade: ${escapeHtml(move.quantidade)}`);
-        if (move.destinatario) extra.push(`Destinatário: ${escapeHtml(move.destinatario)}`);
+        if (move.destinatario) {
+          const personLabel = move.tipo === "Coletado transferência" ? "Remetente" : "Destinatário";
+          extra.push(`${personLabel}: ${escapeHtml(move.destinatario)}`);
+        }
         if (move.sala_destino) extra.push(`Sala de destino: ${escapeHtml(move.sala_destino)}`);
         if (move.detalhe) extra.push(escapeHtml(move.detalhe));
         return `<div class="history-item">
@@ -791,7 +830,7 @@ if (moreBtn) {
 const addBtn = $("btn-add");
 if (addBtn) {
   addBtn.addEventListener("click", () => {
-    if (isGestao()) openReportModal();
+    if (isGestao()) openReportKindModal();
     else openModal(null);
   });
 }
@@ -806,7 +845,6 @@ $("equip-body").addEventListener("click", (e) => {
   const editId = e.target.dataset.edit;
   const delId = e.target.dataset.del;
   const alterId = e.target.dataset.alter;
-  const finishId = e.target.dataset.finish;
   const delReportId = e.target.dataset.delReport;
   if (detailsBtn) {
     const item = state.items.find((i) => String(i.id) === String(detailsBtn.dataset.details));
@@ -822,10 +860,6 @@ $("equip-body").addEventListener("click", (e) => {
     const item = state.items.find((i) => String(i.id) === String(alterId));
     if (item) openAlterModal(item);
   }
-  if (finishId) {
-    const item = state.items.find((i) => String(i.id) === String(finishId));
-    if (item) openFinishModal(item);
-  }
   if (delReportId) removeReport(delReportId);
 });
 
@@ -836,6 +870,23 @@ $("report-modal").addEventListener("click", (e) => {
 });
 $("report-form").addEventListener("submit", saveReport);
 
+$("report-kind-close").addEventListener("click", closeReportKindModal);
+$("report-kind-cancel").addEventListener("click", closeReportKindModal);
+$("report-kind-modal").addEventListener("click", (e) => {
+  if (e.target.id === "report-kind-modal") closeReportKindModal();
+  const kind = e.target.closest("[data-report-kind]");
+  if (!kind) return;
+  if (kind.dataset.reportKind === "retirada") openReportModal();
+  else openReturnModal();
+});
+
+$("report-return-close").addEventListener("click", closeReturnModal);
+$("report-return-cancel").addEventListener("click", closeReturnModal);
+$("report-return-modal").addEventListener("click", (e) => {
+  if (e.target.id === "report-return-modal") closeReturnModal();
+});
+$("report-return-form").addEventListener("submit", saveReturnReport);
+
 $("report-alter-close").addEventListener("click", closeAlterModal);
 $("report-alter-cancel").addEventListener("click", closeAlterModal);
 $("report-alter-modal").addEventListener("click", (e) => {
@@ -843,17 +894,6 @@ $("report-alter-modal").addEventListener("click", (e) => {
 });
 $("report-alter-form").addEventListener("submit", saveAlterReport);
 $("ra-tipo").addEventListener("change", syncTransferFields);
-
-$("report-finish-close").addEventListener("click", closeFinishModal);
-$("report-finish-cancel").addEventListener("click", closeFinishModal);
-$("report-finish-save").addEventListener("click", saveFinishReport);
-$("report-finish-modal").addEventListener("click", (e) => {
-  if (e.target.id === "report-finish-modal") closeFinishModal();
-});
-$("finish-options").addEventListener("click", (e) => {
-  const pick = e.target.closest("[data-finish]");
-  if (pick) pickFinish(pick.dataset.finish);
-});
 
 $("report-details-close").addEventListener("click", closeDetailsModal);
 $("report-details-cancel").addEventListener("click", closeDetailsModal);
