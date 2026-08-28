@@ -16,6 +16,8 @@ const state = {
   assignableRoles: [],
   roleUserId: "",
   pickedRole: "",
+  detailsItem: null,
+  detailsFilter: "",
 };
 
 function $(id) {
@@ -496,36 +498,66 @@ async function removeReport(id) {
   }
 }
 
-function openDetailsModal(item) {
+function renderDetailsList() {
   const list = $("report-details-list");
-  const moves = item.movimentos || [];
-  if (!moves.length) {
-    list.innerHTML = `<p class="admin-hint">Nenhuma alteração registrada neste relatório.</p>`;
-  } else {
-    list.innerHTML = moves
-      .map((move) => {
-        const extra = [];
-        if (move.quantidade) extra.push(`Quantidade: ${escapeHtml(move.quantidade)}`);
-        if (move.destinatario) {
-          const personLabel = move.tipo === "Coletado transferência" ? "Remetente" : "Destinatário";
-          extra.push(`${personLabel}: ${escapeHtml(move.destinatario)}`);
-        }
-        if (move.sala_destino) extra.push(`Sala de destino: ${escapeHtml(move.sala_destino)}`);
-        if (move.detalhe) extra.push(escapeHtml(move.detalhe));
-        return `<div class="history-item">
-          <div class="history-when">${escapeHtml(move.quando)}</div>
-          <div class="history-title">${escapeHtml(move.tipo)}</div>
-          <div class="history-meta">Conta: ${escapeHtml(move.usuario)}${move.cargo ? " · " + escapeHtml(move.cargo) : ""}</div>
-          ${extra.length ? `<div class="history-meta">${extra.join("<br>")}</div>` : ""}
-        </div>`;
-      })
-      .join("");
+  const item = state.detailsItem;
+  const filter = state.detailsFilter;
+  const moves = item?.movimentos || [];
+  const filtered = moves.filter((move) => {
+    if (!filter) return move.tipo === "Criado";
+    return move.tipo === filter;
+  });
+  const empty = {
+    "": "Nenhum log de criação neste relatório.",
+    Transferido: "Nenhuma transferência registrada.",
+    Entregue: "Nenhuma entrega registrada.",
+  };
+  if (!filtered.length) {
+    list.innerHTML = `<p class="admin-hint">${empty[filter] || "Nenhuma alteração nesta aba."}</p>`;
+    return;
   }
+  list.innerHTML = filtered
+    .map((move) => {
+      const extra = [];
+      if (move.quantidade) extra.push(`Quantidade: ${escapeHtml(move.quantidade)}`);
+      if (move.destinatario) {
+        const personLabel = move.tipo === "Coletado transferência" ? "Remetente" : "Destinatário";
+        extra.push(`${personLabel}: ${escapeHtml(move.destinatario)}`);
+      }
+      if (move.sala_destino) extra.push(`Sala de destino: ${escapeHtml(move.sala_destino)}`);
+      if (move.detalhe) extra.push(escapeHtml(move.detalhe));
+      return `<div class="history-item">
+        <div class="history-when">${escapeHtml(move.quando)}</div>
+        <div class="history-title">${escapeHtml(move.tipo)}</div>
+        <div class="history-meta">Conta: ${escapeHtml(move.usuario)}${move.cargo ? " · " + escapeHtml(move.cargo) : ""}</div>
+        ${extra.length ? `<div class="history-meta">${extra.join("<br>")}</div>` : ""}
+      </div>`;
+    })
+    .join("");
+}
+
+function setDetailsTab(filter) {
+  state.detailsFilter = state.detailsFilter === filter ? "" : filter;
+  document.querySelectorAll("#report-details-tabs .details-tab").forEach((btn) => {
+    btn.classList.toggle("active", btn.dataset.detailsTab === state.detailsFilter);
+  });
+  renderDetailsList();
+}
+
+function openDetailsModal(item) {
+  state.detailsItem = item;
+  state.detailsFilter = "";
+  document.querySelectorAll("#report-details-tabs .details-tab").forEach((btn) => {
+    btn.classList.remove("active");
+  });
+  renderDetailsList();
   $("report-details-modal").classList.add("open");
 }
 
 function closeDetailsModal() {
   $("report-details-modal").classList.remove("open");
+  state.detailsItem = null;
+  state.detailsFilter = "";
 }
 
 function roleLabel(role) {
@@ -903,6 +935,10 @@ $("report-details-close").addEventListener("click", closeDetailsModal);
 $("report-details-cancel").addEventListener("click", closeDetailsModal);
 $("report-details-modal").addEventListener("click", (e) => {
   if (e.target.id === "report-details-modal") closeDetailsModal();
+});
+$("report-details-tabs").addEventListener("click", (e) => {
+  const tab = e.target.closest("[data-details-tab]");
+  if (tab) setDetailsTab(tab.dataset.detailsTab);
 });
 
 const usersBody = $("users-body");
