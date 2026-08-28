@@ -531,6 +531,13 @@ table.schedule {
   font-size: 13px;
   line-height: 1;
 }
+.patrimonio-value {
+  margin: 8px 0 0;
+  font-family: var(--mono);
+  font-size: 22px;
+  color: var(--pastel-green);
+  word-break: break-all;
+}
 .history-list {
   display: flex;
   flex-direction: column;
@@ -710,6 +717,10 @@ label {
   letter-spacing: .8px;
   text-transform: uppercase;
   margin: 12px 0 6px;
+}
+
+#wrap-patrimonio:not([hidden]) {
+  display: block;
 }
 
 .form { display: flex; flex-direction: column; gap: 4px; }

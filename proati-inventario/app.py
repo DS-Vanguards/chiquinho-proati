@@ -271,12 +271,20 @@ def normalize_payload(tab: str, data: dict, existing=None):
     else:
         status = existing.status if existing else None
 
+    serie_patrimonio = (data.get("serie_patrimonio") or "").strip()[:120]
+    if tab == "tecnico" and modelo.lower() == "thinkpad":
+        if not serie_patrimonio:
+            return None, "Informe a série do patrimônio."
+    else:
+        serie_patrimonio = None
+
     return {
         "modelo": modelo,
         "serial": serial,
         "numeracao": numeracao,
         "status": status,
         "problema": problema if is_maintenance_tab(tab) else None,
+        "serie_patrimonio": serie_patrimonio,
     }, None
 
 
@@ -588,6 +596,7 @@ def api_update_equipment(item_id):
     item.numeracao = payload["numeracao"]
     item.status = payload["status"]
     item.problema = payload["problema"]
+    item.serie_patrimonio = payload.get("serie_patrimonio")
     try:
         db.session.commit()
     except IntegrityError:

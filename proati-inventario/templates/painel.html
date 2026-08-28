@@ -104,6 +104,10 @@
       <input class="form-input" id="f-serial" required maxlength="120" placeholder="Número de série">
       <label>Numeração</label>
       <input class="form-input" id="f-numeracao" required maxlength="80" placeholder="Ex: 01">
+      <div id="wrap-patrimonio" hidden>
+        <label for="f-patrimonio">Série do patrimônio</label>
+        <input class="form-input" id="f-patrimonio" maxlength="120" placeholder="Série do patrimônio">
+      </div>
       <div id="wrap-problema">
         <label>Descrição do problema</label>
         <textarea class="form-input" id="f-problema" maxlength="2000" placeholder="Descreva o problema..."></textarea>
@@ -116,6 +120,21 @@
     <div class="modal-footer">
       <button class="close-footer-btn" type="button" id="modal-cancel">CANCELAR</button>
       <button class="print-btn" type="submit" form="equip-form" id="modal-save">SALVAR</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="patrimonio-modal">
+  <div class="modal">
+    <div class="modal-header">
+      <span class="modal-title">S/N Patrimônio</span>
+      <button class="modal-close-btn" type="button" id="patrimonio-modal-close">✕</button>
+    </div>
+    <div class="modal-body">
+      <p class="patrimonio-value" id="patrimonio-value"></p>
+    </div>
+    <div class="modal-footer">
+      <button class="close-footer-btn" type="button" id="patrimonio-modal-cancel">FECHAR</button>
     </div>
   </div>
 </div>

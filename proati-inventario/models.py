@@ -126,6 +126,7 @@ class Equipment(db.Model):
     numeracao = db.Column(db.String(80), nullable=False)
     status = db.Column(db.String(40), nullable=True)
     problema = db.Column(db.Text, nullable=True)
+    serie_patrimonio = db.Column(db.String(120), nullable=True)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
@@ -143,6 +144,7 @@ class Equipment(db.Model):
             "numeracao": self.numeracao,
             "status": self.status or "",
             "problema": self.problema or "",
+            "serie_patrimonio": self.serie_patrimonio or "",
         }
 
 
@@ -294,6 +296,12 @@ def ensure_schema():
             )
         )
         db.session.commit()
+        equip_cols = {column["name"] for column in inspector.get_columns("equipment")}
+        if "serie_patrimonio" not in equip_cols:
+            db.session.execute(
+                text("ALTER TABLE equipment ADD COLUMN serie_patrimonio VARCHAR(120)")
+            )
+            db.session.commit()
 
     if "relatorios" in inspector.get_table_names():
         relatorio_cols = {column["name"] for column in inspector.get_columns("relatorios")}

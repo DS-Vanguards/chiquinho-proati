@@ -74,6 +74,25 @@ function isGestao() {
   return currentMeta().kind === "gestao";
 }
 
+function isTecnico() {
+  return state.tab === "tecnico";
+}
+
+function selectedModelo() {
+  return $("f-modelo-select").hidden ? $("f-modelo").value.trim() : $("f-modelo-select").value.trim();
+}
+
+function syncPatrimonioField(item) {
+  const wrap = $("wrap-patrimonio");
+  const input = $("f-patrimonio");
+  if (!wrap || !input) return;
+  const show = isTecnico() && selectedModelo().toLowerCase() === "thinkpad";
+  wrap.hidden = !show;
+  input.required = show;
+  if (!show) input.value = "";
+  else if (item && item.serie_patrimonio) input.value = item.serie_patrimonio;
+}
+
 function tabModels() {
   return currentMeta().models || (window.PROATI.tabModels || {})[state.tab] || [];
 }
@@ -216,6 +235,7 @@ function renderHead() {
     ${modelTh}
     <th>Serial equipamento</th>
     <th>Numeração</th>
+    ${isTecnico() ? `<th style="text-align:center">S/N Patrimônio</th>` : ""}
     ${maintenance ? `<th class="th-note">Descrição do problema</th>` : ""}
     ${skipStatus ? "" : `<th style="text-align:center">Status</th>`}
     ${window.PROATI.canEdit ? `<th style="width:140px">Ações</th>` : ""}
@@ -262,7 +282,7 @@ function renderRows(items) {
   const maintenance = isMaintenance();
   const skipStatus = currentMeta().skipStatus;
   if (!items.length) {
-    const cols = 4 + (maintenance ? 1 : 0) + (skipStatus ? 0 : 1) + (window.PROATI.canEdit ? 1 : 0);
+    const cols = 4 + (isTecnico() ? 1 : 0) + (maintenance ? 1 : 0) + (skipStatus ? 0 : 1) + (window.PROATI.canEdit ? 1 : 0);
     body.innerHTML = `<tr><td colspan="${cols}" class="empty">Nenhum equipamento registrado.</td></tr>`;
     return;
   }
@@ -274,11 +294,19 @@ function renderRows(items) {
             <button class="btn-sm btn-danger" data-del="${item.id}" type="button">Remover</button>
           </td>`
         : "";
+      const patrimonio = isTecnico()
+        ? `<td style="text-align:center">${
+            item.serie_patrimonio
+              ? `<button class="btn-sm btn-more" data-patrimonio="${item.id}" type="button" title="Ver S/N Patrimônio">...</button>`
+              : "—"
+          }</td>`
+        : "";
       return `<tr>
         <td class="td-num"><span class="num-badge">${idx + 1}</span></td>
         <td class="td-tab">${escapeHtml(item.modelo)}</td>
         <td class="td-time">${escapeHtml(item.serial)}</td>
         <td>${escapeHtml(item.numeracao)}</td>
+        ${patrimonio}
         ${maintenance ? `<td class="td-note">${escapeHtml(item.problema)}</td>` : ""}
         ${skipStatus ? "" : `<td style="text-align:center"><span class="badge ${badgeClass(item.status)}">${escapeHtml(item.status)}</span></td>`}
         ${actions}
@@ -362,6 +390,8 @@ function openModal(item) {
   }
   $("f-serial").value = item?.serial || "";
   $("f-numeracao").value = item?.numeracao || "";
+  $("f-patrimonio").value = item?.serie_patrimonio || "";
+  syncPatrimonioField(item);
   $("f-problema").value = item?.problema || "";
   $("wrap-problema").style.display = meta.kind === "maintenance" ? "block" : "none";
   $("wrap-status").style.display = meta.skipStatus ? "none" : "block";
@@ -376,6 +406,15 @@ function closeModal() {
   $("equip-modal").classList.remove("open");
 }
 
+function openPatrimonioModal(item) {
+  $("patrimonio-value").textContent = item.serie_patrimonio || "—";
+  $("patrimonio-modal").classList.add("open");
+}
+
+function closePatrimonioModal() {
+  $("patrimonio-modal").classList.remove("open");
+}
+
 async function saveEquipment(event) {
   event.preventDefault();
   const meta = currentMeta();
@@ -385,6 +424,7 @@ async function saveEquipment(event) {
     modelo: $("f-modelo-select").hidden ? $("f-modelo").value.trim() : $("f-modelo-select").value.trim(),
     serial: $("f-serial").value.trim(),
     numeracao: $("f-numeracao").value.trim(),
+    serie_patrimonio: $("f-patrimonio").value.trim(),
     problema: $("f-problema").value.trim(),
     status: $("f-status").value,
   };
@@ -979,9 +1019,20 @@ $("modal-cancel").addEventListener("click", closeModal);
 $("equip-modal").addEventListener("click", (e) => {
   if (e.target.id === "equip-modal") closeModal();
 });
+$("patrimonio-modal-close").addEventListener("click", closePatrimonioModal);
+$("patrimonio-modal-cancel").addEventListener("click", closePatrimonioModal);
+$("patrimonio-modal").addEventListener("click", (e) => {
+  if (e.target.id === "patrimonio-modal") closePatrimonioModal();
+});
 $("equip-form").addEventListener("submit", saveEquipment);
+$("f-modelo-select").addEventListener("change", () => {
+  const id = $("equip-id").value;
+  const item = state.items.find((row) => String(row.id) === String(id));
+  syncPatrimonioField(item);
+});
 $("equip-body").addEventListener("click", (e) => {
   const detailsBtn = e.target.closest("[data-details]");
+  const patrimonioBtn = e.target.closest("[data-patrimonio]");
   const editId = e.target.dataset.edit;
   const delId = e.target.dataset.del;
   const alterId = e.target.dataset.alter;
@@ -989,6 +1040,11 @@ $("equip-body").addEventListener("click", (e) => {
   if (detailsBtn) {
     const item = state.items.find((i) => String(i.id) === String(detailsBtn.dataset.details));
     if (item) openDetailsModal(item);
+    return;
+  }
+  if (patrimonioBtn) {
+    const item = state.items.find((i) => String(i.id) === String(patrimonioBtn.dataset.patrimonio));
+    if (item) openPatrimonioModal(item);
     return;
   }
   if (editId) {
