@@ -1,7 +1,7 @@
 from datetime import datetime, timedelta
 
 from flask_login import UserMixin
-from sqlalchemy import inspect, text
+from sqlalchemy import func, inspect, text
 from sqlalchemy.exc import IntegrityError
 from werkzeug.security import check_password_hash, generate_password_hash
 
@@ -240,6 +240,142 @@ class RelatorioMovimento(db.Model):
             "detalhe": self.detalhe or "",
             "quando": when.strftime("%d/%m/%Y %H:%M") if when else "",
         }
+
+
+class SchoolStock(db.Model):
+    __tablename__ = "school_stock"
+
+    id = db.Column(db.Integer, primary_key=True)
+    pool = db.Column(db.String(40), nullable=False, index=True)
+    modelo = db.Column(db.String(120), nullable=False)
+    quantidade = db.Column(db.Integer, nullable=False, default=0)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    __table_args__ = (
+        db.UniqueConstraint("pool", "modelo", name="uq_school_stock_pool_modelo"),
+    )
+
+
+def gestao_stock_specs():
+    specs = []
+    for pool, items in config.GESTAO_STOCK.items():
+        for item in items:
+            specs.append({"pool": pool, "modelo": item["modelo"], "label": item["label"]})
+    return specs
+
+
+def match_gestao_modelo(tab: str, raw: str):
+    allowed = [item["modelo"] for item in config.GESTAO_STOCK.get(tab) or []]
+    text = (raw or "").strip()
+    if not text or not allowed:
+        return None
+    for modelo in allowed:
+        if modelo.lower() == text.lower():
+            return modelo
+    hits = [modelo for modelo in allowed if modelo.lower() in text.lower()]
+    if len(hits) == 1:
+        return hits[0]
+    return None
+
+
+def maintenance_stock_key(tab: str, modelo: str):
+    mapped = (config.MAINTENANCE_STOCK_MAP.get(tab) or {}).get(modelo)
+    if mapped:
+        return mapped
+    for key, value in (config.MAINTENANCE_STOCK_MAP.get(tab) or {}).items():
+        if key.lower() == (modelo or "").lower():
+            return value
+    return None
+
+
+def report_units_out(relatorio, entregue_map=None) -> int:
+    if relatorio.status == "Entregues":
+        return 0
+    if entregue_map is not None:
+        entregue = int(entregue_map.get(relatorio.id) or 0)
+    else:
+        entregue = sum(
+            int(move.quantidade or 0)
+            for move in (relatorio.movimentos or [])
+            if move.tipo == "Entregue"
+        )
+    return max(0, int(relatorio.quantidade or 0) - entregue)
+
+
+def stock_snapshot(*, ignore_equipment_id=None, ignore_relatorio_id=None):
+    totals = {
+        (row.pool, row.modelo): int(row.quantidade or 0) for row in SchoolStock.query.all()
+    }
+    maintenance_used = {}
+    query = Equipment.query.filter(Equipment.tab.in_(config.MAINTENANCE_TABS))
+    if ignore_equipment_id:
+        query = query.filter(Equipment.id != ignore_equipment_id)
+    for item in query.all():
+        key = maintenance_stock_key(item.tab, item.modelo)
+        if not key:
+            continue
+        maintenance_used[key] = maintenance_used.get(key, 0) + 1
+
+    entregue_map = dict(
+        db.session.query(
+            RelatorioMovimento.relatorio_id,
+            func.coalesce(func.sum(RelatorioMovimento.quantidade), 0),
+        )
+        .filter(RelatorioMovimento.tipo == "Entregue")
+        .group_by(RelatorioMovimento.relatorio_id)
+        .all()
+    )
+    reports_used = {}
+    report_query = Relatorio.query.filter(Relatorio.status != "Entregues")
+    if ignore_relatorio_id:
+        report_query = report_query.filter(Relatorio.id != ignore_relatorio_id)
+    for report in report_query.all():
+        modelo = match_gestao_modelo(report.tab, report.modelos)
+        if not modelo:
+            continue
+        key = (report.tab, modelo)
+        reports_used[key] = reports_used.get(key, 0) + report_units_out(report, entregue_map)
+
+    itens = []
+    total = 0
+    por_aba = {pool: [] for pool in config.GESTAO_STOCK}
+    for spec in gestao_stock_specs():
+        key = (spec["pool"], spec["modelo"])
+        quantidade_total = totals.get(key, 0)
+        em_manutencao = maintenance_used.get(key, 0)
+        em_uso = reports_used.get(key, 0)
+        restantes = max(0, quantidade_total - em_manutencao - em_uso)
+        row = {
+            "pool": spec["pool"],
+            "modelo": spec["modelo"],
+            "label": spec["label"],
+            "quantidade_total": quantidade_total,
+            "em_manutencao": em_manutencao,
+            "em_uso": em_uso,
+            "restantes": restantes,
+        }
+        itens.append(row)
+        por_aba[spec["pool"]].append(row)
+        total += quantidade_total
+    return {"itens": itens, "total": total, "por_aba": por_aba}
+
+
+def stock_unavailable_error(pool: str, modelo: str, quantidade: int, **ignore):
+    if quantidade < 1:
+        return None
+    snapshot = stock_snapshot(**ignore)
+    item = next(
+        (row for row in snapshot["itens"] if row["pool"] == pool and row["modelo"] == modelo),
+        None,
+    )
+    if not item:
+        return "Modelo sem estoque cadastrado."
+    if item["restantes"] < quantidade:
+        return (
+            f"Não há {item['label']} restantes o suficiente "
+            f"({item['restantes']} disponíveis)."
+        )
+    return None
 
 
 def purge_expired_relatorios() -> int:

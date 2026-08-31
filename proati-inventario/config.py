@@ -234,6 +234,37 @@ TAB_MODELS = {
     "manutencao_tecnico": ["ThinkPad", "Positivo"],
 }
 MAINTENANCE_MODELS = TAB_MODELS
+GESTAO_STOCK = {
+    "gestao": [
+        {"modelo": "Multilaser", "label": "Multilasers"},
+        {"modelo": "Positivo", "label": "Positivos"},
+        {"modelo": "Chromebook", "label": "Chromebooks"},
+    ],
+    "gestao_tablet": [
+        {"modelo": "Multilaser T2040", "label": "Tablets"},
+    ],
+    "gestao_tecnico": [
+        {"modelo": "ThinkPad", "label": "ThinkPads"},
+        {"modelo": "Positivo", "label": "Positivos"},
+    ],
+}
+GESTAO_STOCK_GROUPS = [
+    {"pool": "gestao", "title": "Notebooks"},
+    {"pool": "gestao_tablet", "title": "Tablets"},
+    {"pool": "gestao_tecnico", "title": "Notebooks técnicos"},
+]
+MAINTENANCE_STOCK_MAP = {
+    "manutencao": {
+        "Multilaser": ("gestao", "Multilaser"),
+        "Multilaser T2040": ("gestao_tablet", "Multilaser T2040"),
+        "Positivo": ("gestao", "Positivo"),
+        "Chromebook": ("gestao", "Chromebook"),
+    },
+    "manutencao_tecnico": {
+        "ThinkPad": ("gestao_tecnico", "ThinkPad"),
+        "Positivo": ("gestao_tecnico", "Positivo"),
+    },
+}
 GESTAO_STATUSES = ["Em uso", "Pendente", "Entregues"]
 GESTAO_MOVE_TYPES = ["Transferido", "Entregue", "Coletado transferência"]
 GESTAO_TRANSFER_LIKE = ["Transferido", "Coletado transferência"]

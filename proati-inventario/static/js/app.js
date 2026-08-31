@@ -20,6 +20,7 @@ const state = {
   detailsFilter: "",
   modelFilter: "",
   statusFilter: "",
+  estoque: null,
 };
 
 function $(id) {
@@ -223,14 +224,24 @@ function badgeClass(status) {
 function renderStats(items) {
   const grid = $("summary-grid");
   if (isGestao()) {
-    const uso = items.filter((i) => i.status === "Em uso").length;
-    const pend = items.filter((i) => i.status === "Pendente").length;
-    const ok = items.filter((i) => i.status === "Entregues").length;
-    grid.innerHTML = `
-      <div class="stat-item"><div class="stat-label">Total</div><div class="stat-val yellow">${items.length}</div><div class="stat-unit">relatórios</div></div>
-      <div class="stat-item"><div class="stat-label">Em uso</div><div class="stat-val blue">${uso}</div><div class="stat-unit">relatórios</div></div>
-      <div class="stat-item"><div class="stat-label">Pendente</div><div class="stat-val" style="color:var(--pastel-orange)">${pend}</div><div class="stat-unit">relatórios</div></div>
-      <div class="stat-item"><div class="stat-label">Entregues</div><div class="stat-val green">${ok}</div><div class="stat-unit">relatórios</div></div>`;
+    const stockRows = ((state.estoque || {}).por_aba || {})[state.tab] || [];
+    const stock = stockRows.length
+      ? stockRows
+      : ((window.PROATI.gestaoStock || {})[state.tab] || []).map((row) => ({
+          ...row,
+          restantes: 0,
+        }));
+    const colors = ["blue", "green", "purple"];
+    const cards = [
+      `<div class="stat-item"><div class="stat-label">Total relatórios</div><div class="stat-val yellow">${items.length}</div><div class="stat-unit">relatórios</div></div>`,
+    ];
+    stock.forEach((row, idx) => {
+      const color = row.restantes === 0 ? "orange" : colors[idx % colors.length];
+      cards.push(
+        `<div class="stat-item"><div class="stat-label">${escapeHtml(row.label)}</div><div class="stat-val ${color}">${row.restantes}</div><div class="stat-unit">restantes</div></div>`
+      );
+    });
+    grid.innerHTML = cards.join("");
     return;
   }
   if (currentMeta().fixedModel) {
@@ -403,6 +414,7 @@ async function loadEquipment() {
 async function loadReports() {
   const data = await request(`/api/relatorios?tab=${encodeURIComponent(state.tab)}`);
   state.items = data.itens || [];
+  state.estoque = data.estoque || state.estoque;
   state.modelFilter = "";
   state.statusFilter = "";
   closeFilterMenus();
@@ -537,7 +549,10 @@ function closeReportKindModal() {
 
 function openReportModal() {
   closeReportKindModal();
-  $("r-modelos").value = "";
+  const models = (window.PROATI.gestaoStock || {})[state.tab] || [];
+  $("r-modelos").innerHTML =
+    `<option value="">Selecione o modelo</option>` +
+    models.map((item) => `<option value="${escapeHtml(item.modelo)}">${escapeHtml(item.modelo)}</option>`).join("");
   $("r-quantidade").value = "";
   $("r-sala").value = "";
   $("report-modal").classList.add("open");
@@ -945,6 +960,61 @@ async function loadBlocks() {
     .join("");
 }
 
+async function loadStock() {
+  if (!window.PROATI.isAdmin) return;
+  const body = $("stock-body");
+  if (!body) return;
+  const data = await request("/api/estoque");
+  renderStockAdmin(data);
+}
+
+function renderStockAdmin(data) {
+  const body = $("stock-body");
+  const totalEl = $("stock-total");
+  if (!body) return;
+  const titles = Object.fromEntries(
+    (window.PROATI.gestaoStockGroups || []).map((group) => [group.pool, group.title])
+  );
+  const rows = data.itens || [];
+  if (!rows.length) {
+    body.innerHTML = `<tr><td colspan="6" class="empty">Nenhum modelo de estoque configurado.</td></tr>`;
+    if (totalEl) totalEl.textContent = "0";
+    return;
+  }
+  body.innerHTML = rows
+    .map(
+      (row) => `<tr>
+        <td>${escapeHtml(titles[row.pool] || row.pool)}</td>
+        <td>${escapeHtml(row.modelo)}</td>
+        <td><input class="form-input stock-input" type="number" min="0" step="1" data-stock-pool="${escapeHtml(row.pool)}" data-stock-modelo="${escapeHtml(row.modelo)}" value="${Number(row.quantidade_total) || 0}"></td>
+        <td>${Number(row.em_manutencao) || 0}</td>
+        <td>${Number(row.em_uso) || 0}</td>
+        <td>${Number(row.restantes) || 0}</td>
+      </tr>`
+    )
+    .join("");
+  if (totalEl) totalEl.textContent = String(Number(data.total) || 0);
+}
+
+async function saveStock(event) {
+  event.preventDefault();
+  const itens = Array.from(document.querySelectorAll("[data-stock-pool]")).map((input) => ({
+    pool: input.dataset.stockPool,
+    modelo: input.dataset.stockModelo,
+    quantidade_total: input.value,
+  }));
+  try {
+    const data = await request("/api/estoque", {
+      method: "PUT",
+      body: JSON.stringify({ itens }),
+    });
+    renderStockAdmin(data);
+    showToast("✔ Estoque atualizado");
+  } catch (err) {
+    showToast("✘ " + err.message);
+  }
+}
+
 function openBlockModal(id) {
   $("block-id").value = id;
   $("block-amount").value = "1";
@@ -1027,7 +1097,7 @@ function showView(tab) {
   const adminView = $("view-admin");
   if (adminView) adminView.classList.toggle("active", isAdminTab);
   if (isAdminTab) {
-    Promise.all([loadUsers(), loadBlocks()]).catch((err) => showToast("✘ " + err.message));
+    Promise.all([loadUsers(), loadBlocks(), loadStock()]).catch((err) => showToast("✘ " + err.message));
     return;
   }
   $("tab-label").textContent = currentMeta().label.toUpperCase();
@@ -1236,6 +1306,18 @@ if (addUserBtn) {
     event.preventDefault();
     event.stopPropagation();
     openUserModal();
+  });
+}
+const stockForm = $("stock-form");
+if (stockForm) {
+  stockForm.addEventListener("submit", saveStock);
+  stockForm.addEventListener("input", () => {
+    const total = Array.from(document.querySelectorAll("[data-stock-pool]")).reduce(
+      (sum, input) => sum + (Number(input.value) || 0),
+      0
+    );
+    const totalEl = $("stock-total");
+    if (totalEl) totalEl.textContent = String(total);
   });
 }
 const userModal = $("user-modal");

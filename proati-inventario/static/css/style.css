@@ -251,6 +251,22 @@ button.reset-btn { font: inherit; }
 .stat-val.blue { color: var(--pastel-blue); }
 .stat-val.green { color: var(--pastel-green); }
 .stat-val.yellow { color: var(--pastel-yellow); }
+.stat-val.purple { color: var(--pastel-purple); }
+.stat-val.orange { color: var(--pastel-orange); }
+
+.stock-total {
+  font-family: var(--mono);
+  font-size: 13px;
+  color: var(--text2);
+}
+.stock-total strong {
+  color: var(--pastel-yellow);
+  font-size: 18px;
+}
+.stock-input {
+  width: 110px;
+  max-width: 100%;
+}
 
 .day-header {
   padding: 12px 0;

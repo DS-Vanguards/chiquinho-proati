@@ -41,10 +41,16 @@ from models import (
     Equipment,
     Relatorio,
     RelatorioMovimento,
+    SchoolStock,
     User,
     ensure_schema,
     init_default_data,
+    match_gestao_modelo,
+    maintenance_stock_key,
     purge_expired_relatorios,
+    gestao_stock_specs,
+    stock_snapshot,
+    stock_unavailable_error,
 )
 from device_guard import (
     blocked_page_context,
@@ -189,14 +195,31 @@ def is_tablet_like_tab(tab: str) -> bool:
     return tab in config.TABLET_LIKE_TABS
 
 
-def parse_positive_int(value):
+def parse_non_negative_int(value):
     try:
         number = int(str(value).strip())
     except (TypeError, ValueError):
         return None
-    if number < 1:
+    if number < 0:
         return None
     return number
+
+
+def parse_positive_int(value):
+    number = parse_non_negative_int(value)
+    if number is None or number < 1:
+        return None
+    return number
+
+
+def maintenance_stock_error(tab: str, modelo: str, *, ignore_equipment_id=None):
+    key = maintenance_stock_key(tab, modelo)
+    if not key:
+        return None
+    pool, stock_modelo = key
+    return stock_unavailable_error(
+        pool, stock_modelo, 1, ignore_equipment_id=ignore_equipment_id
+    )
 
 
 def deny_report_write():
@@ -304,6 +327,8 @@ def inject_globals():
         "INVENTORY_STATUSES": config.INVENTORY_STATUSES,
         "MAINTENANCE_STATUSES": config.MAINTENANCE_STATUSES,
         "TAB_MODELS": config.TAB_MODELS,
+        "GESTAO_STOCK": config.GESTAO_STOCK,
+        "GESTAO_STOCK_GROUPS": config.GESTAO_STOCK_GROUPS,
         "GESTAO_MOVE_TYPES": config.GESTAO_MOVE_TYPES,
         "csrf_token": generate_csrf,
     }
@@ -565,6 +590,9 @@ def api_create_equipment():
     payload, error = normalize_payload(tab, data)
     if error:
         return jsonify({"erro": error}), 400
+    stock_error = maintenance_stock_error(tab, payload["modelo"])
+    if stock_error:
+        return jsonify({"erro": stock_error}), 400
 
     item = Equipment(tab=tab, **payload)
     db.session.add(item)
@@ -590,6 +618,12 @@ def api_update_equipment(item_id):
     payload, error = normalize_payload(item.tab, data, existing=item)
     if error:
         return jsonify({"erro": error}), 400
+    if payload["modelo"] != item.modelo:
+        stock_error = maintenance_stock_error(
+            item.tab, payload["modelo"], ignore_equipment_id=item.id
+        )
+        if stock_error:
+            return jsonify({"erro": stock_error}), 400
 
     item.modelo = payload["modelo"]
     item.serial = payload["serial"]
@@ -644,7 +678,10 @@ def api_list_reports():
         .order_by(Relatorio.created_at.desc(), Relatorio.id.desc())
         .all()
     )
-    return jsonify({"itens": [item.to_dict(viewer=current_user) for item in items]})
+    return jsonify({
+        "itens": [item.to_dict(viewer=current_user) for item in items],
+        "estoque": stock_snapshot(),
+    })
 
 
 @app.route("/api/relatorios", methods=["POST"])
@@ -666,11 +703,17 @@ def api_create_report():
     quantidade = parse_positive_int(data.get("quantidade"))
     if not modelos or not sala or not quantidade:
         return jsonify({"erro": "Preencha modelos, quantidade e sala."}), 400
+    modelo = match_gestao_modelo(tab, modelos)
+    if not modelo:
+        return jsonify({"erro": "Selecione um modelo válido."}), 400
+    stock_error = stock_unavailable_error(tab, modelo, quantidade)
+    if stock_error:
+        return jsonify({"erro": stock_error}), 400
 
     purge_expired_relatorios()
     item = Relatorio(
         tab=tab,
-        modelos=modelos,
+        modelos=modelo,
         quantidade=quantidade,
         quantidade_atual=quantidade,
         sala=sala,
@@ -795,6 +838,41 @@ def api_delete_report(item_id):
     db.session.delete(item)
     db.session.commit()
     return jsonify({"ok": True})
+
+
+@app.route("/api/estoque")
+@inventory_required
+def api_get_stock():
+    return jsonify(stock_snapshot())
+
+
+@app.route("/api/estoque", methods=["PUT"])
+@admin_required
+def api_save_stock():
+    data = request.get_json(silent=True) or {}
+    incoming = data.get("itens") or []
+    allowed = {(spec["pool"], spec["modelo"]): spec for spec in gestao_stock_specs()}
+    parsed = []
+    for row in incoming:
+        pool = (row.get("pool") or "").strip()
+        modelo = (row.get("modelo") or "").strip()
+        quantidade = parse_non_negative_int(row.get("quantidade_total", row.get("quantidade")))
+        if (pool, modelo) not in allowed:
+            continue
+        if quantidade is None:
+            return jsonify({"erro": f"Quantidade inválida para {modelo}."}), 400
+        parsed.append((pool, modelo, quantidade))
+
+    by_key = {(pool, modelo): qty for pool, modelo, qty in parsed}
+    for pool, modelo in allowed:
+        quantidade = by_key.get((pool, modelo), 0)
+        item = SchoolStock.query.filter_by(pool=pool, modelo=modelo).first()
+        if item:
+            item.quantidade = quantidade
+        else:
+            db.session.add(SchoolStock(pool=pool, modelo=modelo, quantidade=quantidade))
+    db.session.commit()
+    return jsonify(stock_snapshot())
 
 
 @app.route("/api/usuarios")

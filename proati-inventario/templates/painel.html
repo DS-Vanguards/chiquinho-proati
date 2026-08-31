@@ -85,6 +85,30 @@
       <tbody id="blocks-body"></tbody>
     </table>
     </div>
+
+    <div class="section-title" style="margin-top:28px">Estoque da escola</div>
+    <p class="admin-hint">Informe a quantidade total de cada notebook e tablet. O restante diminui ao criar um relatório ou enviar o modelo para manutenção, e volta ao excluir o relatório ou remover o equipamento da manutenção.</p>
+    <form id="stock-form">
+      <div class="table-wrap admin-table-wrap">
+        <table class="resumo-table" id="stock-table">
+          <thead>
+            <tr>
+              <th>Grupo</th>
+              <th>Modelo</th>
+              <th>Quantidade total</th>
+              <th>Em manutenção</th>
+              <th>Em uso</th>
+              <th>Restantes</th>
+            </tr>
+          </thead>
+          <tbody id="stock-body"></tbody>
+        </table>
+      </div>
+      <div class="admin-users-head" style="margin-top:14px;border:none;padding:0">
+        <div class="stock-total">Quantidade total: <strong id="stock-total">0</strong></div>
+        <button class="save-btn" id="btn-save-stock" type="submit">SALVAR ESTOQUE</button>
+      </div>
+    </form>
   </div>
 </div>
 {% endif %}
@@ -148,7 +172,9 @@
     </div>
     <form class="modal-body" id="report-form">
       <label for="r-modelos">Modelos</label>
-      <input class="form-input" id="r-modelos" maxlength="200" required placeholder="Ex: Chromebook e Positivo">
+      <select class="form-input" id="r-modelos" required>
+        <option value="">Selecione o modelo</option>
+      </select>
       <label for="r-quantidade">Quantidade</label>
       <input class="form-input" id="r-quantidade" type="number" min="1" step="1" required placeholder="Ex: 10">
       <label for="r-sala">Sala</label>
@@ -347,6 +373,8 @@
     inventoryStatuses: {{ INVENTORY_STATUSES | tojson }},
     maintenanceStatuses: {{ MAINTENANCE_STATUSES | tojson }},
     tabModels: {{ TAB_MODELS | tojson }},
+    gestaoStock: {{ GESTAO_STOCK | tojson }},
+    gestaoStockGroups: {{ GESTAO_STOCK_GROUPS | tojson }},
     gestaoMoveTypes: {{ GESTAO_MOVE_TYPES | tojson }},
     roles: {{ ASSIGNABLE_ROLES | tojson }},
     roleLabels: {{ ROLE_LABELS | tojson }},
