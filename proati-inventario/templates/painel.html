@@ -47,9 +47,10 @@
   <div class="th-filter-menu" id="status-filter-menu" hidden></div>
 </div>
 
-{% if is_admin %}
+{% if can_manage_stock %}
 <div id="view-admin" class="view">
   <div class="resumo-wrap">
+    {% if is_admin %}
     <div class="admin-users-head">
       <div class="section-title" style="margin:0;padding:0;border:none">Usuários e cargos</div>
       <button class="save-btn" id="btn-add-user" type="button" onclick="openUserModal()">+ ADICIONAR USUÁRIO</button>
@@ -85,8 +86,9 @@
       <tbody id="blocks-body"></tbody>
     </table>
     </div>
+    {% endif %}
 
-    <div class="section-title" style="margin-top:28px">Estoque da escola</div>
+    <div class="section-title" style="margin-top:{{ '28px' if is_admin else '0' }}">Estoque da escola</div>
     <p class="admin-hint">Informe a quantidade total de cada notebook e tablet. O restante diminui ao criar um relatório ou enviar o modelo para manutenção, e volta ao excluir o relatório ou remover o equipamento da manutenção.</p>
     <form id="stock-form">
       <div class="table-wrap admin-table-wrap">
@@ -367,6 +369,7 @@
   window.PROATI = {
     canEdit: {{ can_edit | tojson }},
     isAdmin: {{ is_admin | tojson }},
+    canManageStock: {{ can_manage_stock | tojson }},
     isProfessor: {{ is_professor | tojson }},
     userId: {{ user_id | tojson }},
     tabletModel: {{ TABLET_MODEL | tojson }},

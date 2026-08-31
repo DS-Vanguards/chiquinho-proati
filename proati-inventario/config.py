@@ -94,6 +94,7 @@ ROLE_RANK = {
 }
 
 STAFF_ROLES = ("vgs_owner", "super_admin", "admin")
+STOCK_ROLES = ("vgs_owner", "super_admin", "admin", "proati")
 EDITOR_ROLES = ("vgs_owner", "super_admin", "admin", "proati", "professor")
 VIEWER_ROLES = ("vgs_owner", "super_admin", "admin", "proati", "coordenador", "professor")
 
@@ -168,14 +169,14 @@ def nav_overflow_tabs(role: str) -> list[str]:
     if role == "professor" or role not in VIEWER_ROLES:
         return []
     extra = list(OVERFLOW_NAV_TABS)
-    if role in STAFF_ROLES:
+    if role in STOCK_ROLES:
         extra.append("admin")
     return extra
 
 
 def can_access_tab(role: str, tab: str) -> bool:
     if tab == "admin":
-        return role in STAFF_ROLES
+        return role in STOCK_ROLES
     return tab in allowed_tabs(role)
 
 

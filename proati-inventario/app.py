@@ -151,6 +151,17 @@ def admin_required(view):
     return wrapped
 
 
+def stock_required(view):
+    @wraps(view)
+    @login_required
+    def wrapped(*args, **kwargs):
+        if not current_user.can_manage_stock():
+            return jsonify({"erro": "Sem permissão para alterar o estoque."}), 403
+        return view(*args, **kwargs)
+
+    return wrapped
+
+
 def last_vgs_owner(user) -> bool:
     if user.role != "vgs_owner":
         return False
@@ -551,6 +562,7 @@ def painel():
         "painel.html",
         can_edit=current_user.can_edit_inventory(),
         is_admin=current_user.can_manage_users(),
+        can_manage_stock=current_user.can_manage_stock(),
         is_professor=current_user.is_professor,
         user_id=current_user.id,
         main_tabs=main_tabs,
@@ -847,7 +859,7 @@ def api_get_stock():
 
 
 @app.route("/api/estoque", methods=["PUT"])
-@admin_required
+@stock_required
 def api_save_stock():
     data = request.get_json(silent=True) or {}
     incoming = data.get("itens") or []

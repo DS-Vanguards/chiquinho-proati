@@ -961,7 +961,7 @@ async function loadBlocks() {
 }
 
 async function loadStock() {
-  if (!window.PROATI.isAdmin) return;
+  if (!window.PROATI.canManageStock) return;
   const body = $("stock-body");
   if (!body) return;
   const data = await request("/api/estoque");
@@ -1097,7 +1097,12 @@ function showView(tab) {
   const adminView = $("view-admin");
   if (adminView) adminView.classList.toggle("active", isAdminTab);
   if (isAdminTab) {
-    Promise.all([loadUsers(), loadBlocks(), loadStock()]).catch((err) => showToast("✘ " + err.message));
+    const jobs = [];
+    if (window.PROATI.isAdmin) {
+      jobs.push(loadUsers(), loadBlocks());
+    }
+    if (window.PROATI.canManageStock) jobs.push(loadStock());
+    Promise.all(jobs).catch((err) => showToast("✘ " + err.message));
     return;
   }
   $("tab-label").textContent = currentMeta().label.toUpperCase();

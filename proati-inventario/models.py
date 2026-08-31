@@ -78,6 +78,9 @@ class User(UserMixin, db.Model):
     def can_manage_users(self) -> bool:
         return self.role in config.STAFF_ROLES
 
+    def can_manage_stock(self) -> bool:
+        return self.role in config.STOCK_ROLES
+
     def can_access_tab(self, tab: str) -> bool:
         return config.can_access_tab(self.role, tab)
 
