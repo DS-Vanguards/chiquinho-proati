@@ -135,7 +135,7 @@ class Equipment(db.Model):
 
     __table_args__ = (
         db.UniqueConstraint("tab", "serial", name="uq_equipment_tab_serial"),
-        db.UniqueConstraint("tab", "numeracao", name="uq_equipment_tab_numeracao"),
+        db.UniqueConstraint("tab", "modelo", "numeracao", name="uq_equipment_tab_modelo_numeracao"),
     )
 
     def to_dict(self) -> dict:
@@ -441,6 +441,7 @@ def ensure_schema():
                 text("ALTER TABLE equipment ADD COLUMN serie_patrimonio VARCHAR(120)")
             )
             db.session.commit()
+        _migrate_equipment_numeracao_unique()
 
     if "relatorios" in inspector.get_table_names():
         relatorio_cols = {column["name"] for column in inspector.get_columns("relatorios")}
@@ -448,6 +449,36 @@ def ensure_schema():
             db.session.execute(text("ALTER TABLE relatorios ADD COLUMN remetente VARCHAR(120)"))
             db.session.commit()
     purge_expired_relatorios()
+
+
+def _constraint_names(table: str) -> set:
+    inspector = inspect(db.engine)
+    names = {item["name"] for item in inspector.get_unique_constraints(table) if item.get("name")}
+    names.update(item["name"] for item in inspector.get_indexes(table) if item.get("name"))
+    return names
+
+
+def _migrate_equipment_numeracao_unique():
+    names = _constraint_names("equipment")
+    dialect = db.engine.dialect.name
+    if "uq_equipment_tab_numeracao" in names:
+        if dialect == "sqlite":
+            db.session.execute(text("DROP INDEX IF EXISTS uq_equipment_tab_numeracao"))
+        else:
+            db.session.execute(
+                text("ALTER TABLE equipment DROP CONSTRAINT IF EXISTS uq_equipment_tab_numeracao")
+            )
+            db.session.execute(text("DROP INDEX IF EXISTS uq_equipment_tab_numeracao"))
+        db.session.commit()
+        names = _constraint_names("equipment")
+    if "uq_equipment_tab_modelo_numeracao" not in names:
+        db.session.execute(
+            text(
+                "CREATE UNIQUE INDEX uq_equipment_tab_modelo_numeracao "
+                "ON equipment (tab, modelo, numeracao)"
+            )
+        )
+        db.session.commit()
 
 
 def init_default_data():

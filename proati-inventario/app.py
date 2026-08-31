@@ -275,6 +275,21 @@ def deny_edit_tab(tab: str):
     return None
 
 
+def equipment_duplicate_error(tab: str, payload: dict, *, exclude_id=None):
+    serial_query = Equipment.query.filter_by(tab=tab, serial=payload["serial"])
+    numero_query = Equipment.query.filter_by(
+        tab=tab, modelo=payload["modelo"], numeracao=payload["numeracao"]
+    )
+    if exclude_id:
+        serial_query = serial_query.filter(Equipment.id != exclude_id)
+        numero_query = numero_query.filter(Equipment.id != exclude_id)
+    if serial_query.first():
+        return "Serial já cadastrado nesta aba."
+    if numero_query.first():
+        return "Numeração já cadastrada neste modelo."
+    return None
+
+
 def normalize_payload(tab: str, data: dict, existing=None):
     serial = (data.get("serial") or "").strip()
     numeracao = (data.get("numeracao") or "").strip()
@@ -605,6 +620,9 @@ def api_create_equipment():
     stock_error = maintenance_stock_error(tab, payload["modelo"])
     if stock_error:
         return jsonify({"erro": stock_error}), 400
+    duplicate = equipment_duplicate_error(tab, payload)
+    if duplicate:
+        return jsonify({"erro": duplicate}), 400
 
     item = Equipment(tab=tab, **payload)
     db.session.add(item)
@@ -612,7 +630,7 @@ def api_create_equipment():
         db.session.commit()
     except IntegrityError:
         db.session.rollback()
-        return jsonify({"erro": "Serial ou numeração já cadastrados nesta aba."}), 400
+        return jsonify({"erro": "Serial já cadastrado nesta aba ou numeração já usada neste modelo."}), 400
     return jsonify({"item": item.to_dict()}), 201
 
 
@@ -636,6 +654,9 @@ def api_update_equipment(item_id):
         )
         if stock_error:
             return jsonify({"erro": stock_error}), 400
+    duplicate = equipment_duplicate_error(item.tab, payload, exclude_id=item.id)
+    if duplicate:
+        return jsonify({"erro": duplicate}), 400
 
     item.modelo = payload["modelo"]
     item.serial = payload["serial"]
@@ -647,7 +668,7 @@ def api_update_equipment(item_id):
         db.session.commit()
     except IntegrityError:
         db.session.rollback()
-        return jsonify({"erro": "Serial ou numeração já cadastrados nesta aba."}), 400
+        return jsonify({"erro": "Serial já cadastrado nesta aba ou numeração já usada neste modelo."}), 400
     return jsonify({"item": item.to_dict()})
 
 
