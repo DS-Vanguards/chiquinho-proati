@@ -2,7 +2,7 @@ const TABS = {
   tablets: { label: "Tablets", kind: "inventory", skipStatus: true, fixedModel: true },
   regular: { label: "Regular", kind: "inventory", models: ["Multilaser", "Positivo", "Chromebook"] },
   tecnico: { label: "Técnico", kind: "inventory", models: ["ThinkPad", "Positivo"] },
-  manutencao: { label: "Manutenção", kind: "maintenance", models: ["Multilaser", "Multilaser T2040", "Positivo", "Chromebook"] },
+  manutencao: { label: "Manutenção", kind: "maintenance", models: ["Multilaser", "Positivo T2040", "Positivo", "Chromebook"] },
   manutencao_tecnico: { label: "Manutenção Técnico", kind: "maintenance", models: ["ThinkPad", "Positivo"] },
   gestao: { label: "Gestão", kind: "gestao" },
   gestao_tablet: { label: "Gestão Tablet", kind: "gestao" },
@@ -93,6 +93,21 @@ function syncPatrimonioField(item) {
   input.required = show;
   if (!show) input.value = "";
   else if (item && item.serie_patrimonio) input.value = item.serie_patrimonio;
+}
+
+function syncSkipField(checkId, inputId) {
+  const box = $(checkId);
+  const input = $(inputId);
+  if (!box || !input) return;
+  const skip = box.checked;
+  input.disabled = skip;
+  input.required = !skip;
+  if (skip) input.value = "";
+}
+
+function syncSkipFields() {
+  syncSkipField("f-sem-serial", "f-serial");
+  syncSkipField("f-sem-numeracao", "f-numeracao");
 }
 
 function tabModels() {
@@ -382,8 +397,8 @@ function renderRows(items) {
       return `<tr>
         <td class="td-num"><span class="num-badge">${idx + 1}</span></td>
         <td class="td-tab">${escapeHtml(item.modelo)}</td>
-        <td class="td-time">${escapeHtml(item.serial)}</td>
-        <td>${escapeHtml(item.numeracao)}</td>
+        <td class="td-time">${escapeHtml(item.serial) || "—"}</td>
+        <td>${escapeHtml(item.numeracao) || "—"}</td>
         ${patrimonio}
         ${maintenance ? `<td class="td-note">${escapeHtml(item.problema)}</td>` : ""}
         ${skipStatus ? "" : `<td style="text-align:center"><span class="badge ${badgeClass(item.status)}">${escapeHtml(item.status)}</span></td>`}
@@ -470,6 +485,9 @@ function openModal(item) {
   }
   $("f-serial").value = item?.serial || "";
   $("f-numeracao").value = item?.numeracao || "";
+  $("f-sem-serial").checked = Boolean(item) && !item.serial;
+  $("f-sem-numeracao").checked = Boolean(item) && !item.numeracao;
+  syncSkipFields();
   $("f-patrimonio").value = item?.serie_patrimonio || "";
   syncPatrimonioField(item);
   $("f-problema").value = item?.problema || "";
@@ -502,8 +520,10 @@ async function saveEquipment(event) {
   const payload = {
     tab: state.tab,
     modelo: $("f-modelo-select").hidden ? $("f-modelo").value.trim() : $("f-modelo-select").value.trim(),
-    serial: $("f-serial").value.trim(),
-    numeracao: $("f-numeracao").value.trim(),
+    serial: $("f-sem-serial").checked ? "" : $("f-serial").value.trim(),
+    numeracao: $("f-sem-numeracao").checked ? "" : $("f-numeracao").value.trim(),
+    sem_serial: $("f-sem-serial").checked,
+    sem_numeracao: $("f-sem-numeracao").checked,
     serie_patrimonio: $("f-patrimonio").value.trim(),
     problema: $("f-problema").value.trim(),
     status: $("f-status").value,
@@ -1183,6 +1203,8 @@ $("patrimonio-modal").addEventListener("click", (e) => {
   if (e.target.id === "patrimonio-modal") closePatrimonioModal();
 });
 $("equip-form").addEventListener("submit", saveEquipment);
+$("f-sem-serial").addEventListener("change", syncSkipFields);
+$("f-sem-numeracao").addEventListener("change", syncSkipFields);
 $("f-modelo-select").addEventListener("change", () => {
   const id = $("equip-id").value;
   const item = state.items.find((row) => String(row.id) === String(id));

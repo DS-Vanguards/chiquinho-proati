@@ -1,7 +1,7 @@
 from datetime import datetime, timedelta
 
 from flask_login import UserMixin
-from sqlalchemy import func, inspect, text
+from sqlalchemy import Index, func, inspect, text
 from sqlalchemy.exc import IntegrityError
 from werkzeug.security import check_password_hash, generate_password_hash
 
@@ -134,8 +134,23 @@ class Equipment(db.Model):
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
     __table_args__ = (
-        db.UniqueConstraint("tab", "serial", name="uq_equipment_tab_serial"),
-        db.UniqueConstraint("tab", "modelo", "numeracao", name="uq_equipment_tab_modelo_numeracao"),
+        Index(
+            "uq_equipment_tab_serial_filled",
+            "tab",
+            "serial",
+            unique=True,
+            sqlite_where=text("serial IS NOT NULL AND serial != ''"),
+            postgresql_where=text("serial IS NOT NULL AND serial != ''"),
+        ),
+        Index(
+            "uq_equipment_tab_modelo_numeracao_filled",
+            "tab",
+            "modelo",
+            "numeracao",
+            unique=True,
+            sqlite_where=text("numeracao IS NOT NULL AND numeracao != ''"),
+            postgresql_where=text("numeracao IS NOT NULL AND numeracao != ''"),
+        ),
     )
 
     def to_dict(self) -> dict:
@@ -442,6 +457,7 @@ def ensure_schema():
             )
             db.session.commit()
         _migrate_equipment_numeracao_unique()
+        _rename_tablet_model()
 
     if "relatorios" in inspector.get_table_names():
         relatorio_cols = {column["name"] for column in inspector.get_columns("relatorios")}
@@ -458,27 +474,79 @@ def _constraint_names(table: str) -> set:
     return names
 
 
+def _drop_named_constraint(table: str, name: str):
+    dialect = db.engine.dialect.name
+    if dialect == "sqlite":
+        db.session.execute(text(f"DROP INDEX IF EXISTS {name}"))
+        return
+    db.session.execute(text(f"ALTER TABLE {table} DROP CONSTRAINT IF EXISTS {name}"))
+    db.session.execute(text(f"DROP INDEX IF EXISTS {name}"))
+
+
 def _migrate_equipment_numeracao_unique():
     names = _constraint_names("equipment")
     dialect = db.engine.dialect.name
-    if "uq_equipment_tab_numeracao" in names:
-        if dialect == "sqlite":
-            db.session.execute(text("DROP INDEX IF EXISTS uq_equipment_tab_numeracao"))
-        else:
-            db.session.execute(
-                text("ALTER TABLE equipment DROP CONSTRAINT IF EXISTS uq_equipment_tab_numeracao")
-            )
-            db.session.execute(text("DROP INDEX IF EXISTS uq_equipment_tab_numeracao"))
+    changed = False
+    for name in (
+        "uq_equipment_tab_numeracao",
+        "uq_equipment_tab_serial",
+        "uq_equipment_tab_modelo_numeracao",
+    ):
+        if name in names:
+            _drop_named_constraint("equipment", name)
+            changed = True
+    if changed:
         db.session.commit()
         names = _constraint_names("equipment")
-    if "uq_equipment_tab_modelo_numeracao" not in names:
+    if dialect == "sqlite":
+        serial_where = "serial IS NOT NULL AND serial != ''"
+        numero_where = "numeracao IS NOT NULL AND numeracao != ''"
+    else:
+        serial_where = "serial IS NOT NULL AND btrim(serial) <> ''"
+        numero_where = "numeracao IS NOT NULL AND btrim(numeracao) <> ''"
+    if "uq_equipment_tab_serial_filled" not in names:
         db.session.execute(
             text(
-                "CREATE UNIQUE INDEX uq_equipment_tab_modelo_numeracao "
-                "ON equipment (tab, modelo, numeracao)"
+                "CREATE UNIQUE INDEX uq_equipment_tab_serial_filled "
+                f"ON equipment (tab, serial) WHERE {serial_where}"
             )
         )
         db.session.commit()
+    if "uq_equipment_tab_modelo_numeracao_filled" not in names:
+        db.session.execute(
+            text(
+                "CREATE UNIQUE INDEX uq_equipment_tab_modelo_numeracao_filled "
+                f"ON equipment (tab, modelo, numeracao) WHERE {numero_where}"
+            )
+        )
+        db.session.commit()
+
+
+def _rename_tablet_model():
+    old = getattr(config, "OLD_TABLET_MODEL", "Multilaser T2040")
+    new = config.TABLET_MODEL
+    if not old or old == new:
+        return
+    db.session.execute(
+        text("UPDATE equipment SET modelo = :new WHERE modelo = :old"),
+        {"new": new, "old": old},
+    )
+    inspector = inspect(db.engine)
+    if "relatorios" in inspector.get_table_names():
+        db.session.execute(
+            text("UPDATE relatorios SET modelos = :new WHERE modelos = :old"),
+            {"new": new, "old": old},
+        )
+    if "school_stock" in inspector.get_table_names():
+        old_rows = SchoolStock.query.filter_by(modelo=old).all()
+        for row in old_rows:
+            existing = SchoolStock.query.filter_by(pool=row.pool, modelo=new).first()
+            if existing:
+                existing.quantidade = int(existing.quantidade or 0) + int(row.quantidade or 0)
+                db.session.delete(row)
+            else:
+                row.modelo = new
+    db.session.commit()
 
 
 def init_default_data():

@@ -128,9 +128,17 @@
       <input class="form-input" id="f-modelo" maxlength="120" placeholder="Ex: ThinkPad, Positivo, Multilaser ou Chromebook">
       <select class="form-input" id="f-modelo-select" hidden></select>
       <label>Serial equipamento</label>
-      <input class="form-input" id="f-serial" required maxlength="120" placeholder="Número de série">
+      <input class="form-input" id="f-serial" maxlength="120" placeholder="Número de série">
+      <label class="check-row" for="f-sem-serial">
+        <input type="checkbox" id="f-sem-serial">
+        <span>Não possui número de série</span>
+      </label>
       <label>Numeração</label>
-      <input class="form-input" id="f-numeracao" required maxlength="80" placeholder="Ex: 01">
+      <input class="form-input" id="f-numeracao" maxlength="80" placeholder="Ex: 01">
+      <label class="check-row" for="f-sem-numeracao">
+        <input type="checkbox" id="f-sem-numeracao">
+        <span>Não possui numeração</span>
+      </label>
       <div id="wrap-patrimonio" hidden>
         <label for="f-patrimonio">Série do patrimônio</label>
         <input class="form-input" id="f-patrimonio" maxlength="120" placeholder="Série do patrimônio">

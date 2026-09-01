@@ -220,7 +220,8 @@ TAB_ICONS = {
     "admin": "⚙",
 }
 
-TABLET_MODEL = "Multilaser T2040"
+TABLET_MODEL = "Positivo T2040"
+OLD_TABLET_MODEL = "Multilaser T2040"
 
 INVENTORY_STATUSES = ["Perfeito estado", "Danos periféricos"]
 MAINTENANCE_STATUSES = [
@@ -231,7 +232,7 @@ MAINTENANCE_STATUSES = [
 TAB_MODELS = {
     "regular": ["Multilaser", "Positivo", "Chromebook"],
     "tecnico": ["ThinkPad", "Positivo"],
-    "manutencao": ["Multilaser", "Multilaser T2040", "Positivo", "Chromebook"],
+    "manutencao": ["Multilaser", "Positivo T2040", "Positivo", "Chromebook"],
     "manutencao_tecnico": ["ThinkPad", "Positivo"],
 }
 MAINTENANCE_MODELS = TAB_MODELS
@@ -242,7 +243,7 @@ GESTAO_STOCK = {
         {"modelo": "Chromebook", "label": "Chromebooks"},
     ],
     "gestao_tablet": [
-        {"modelo": "Multilaser T2040", "label": "Tablets"},
+        {"modelo": "Positivo T2040", "label": "Tablets"},
     ],
     "gestao_tecnico": [
         {"modelo": "ThinkPad", "label": "ThinkPads"},
@@ -257,7 +258,8 @@ GESTAO_STOCK_GROUPS = [
 MAINTENANCE_STOCK_MAP = {
     "manutencao": {
         "Multilaser": ("gestao", "Multilaser"),
-        "Multilaser T2040": ("gestao_tablet", "Multilaser T2040"),
+        "Multilaser T2040": ("gestao_tablet", "Positivo T2040"),
+        "Positivo T2040": ("gestao_tablet", "Positivo T2040"),
         "Positivo": ("gestao", "Positivo"),
         "Chromebook": ("gestao", "Chromebook"),
     },

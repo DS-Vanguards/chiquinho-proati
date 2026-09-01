@@ -276,23 +276,28 @@ def deny_edit_tab(tab: str):
 
 
 def equipment_duplicate_error(tab: str, payload: dict, *, exclude_id=None):
-    serial_query = Equipment.query.filter_by(tab=tab, serial=payload["serial"])
-    numero_query = Equipment.query.filter_by(
-        tab=tab, modelo=payload["modelo"], numeracao=payload["numeracao"]
-    )
-    if exclude_id:
-        serial_query = serial_query.filter(Equipment.id != exclude_id)
-        numero_query = numero_query.filter(Equipment.id != exclude_id)
-    if serial_query.first():
-        return "Serial já cadastrado nesta aba."
-    if numero_query.first():
-        return "Numeração já cadastrada neste modelo."
+    if payload.get("serial"):
+        serial_query = Equipment.query.filter_by(tab=tab, serial=payload["serial"])
+        if exclude_id:
+            serial_query = serial_query.filter(Equipment.id != exclude_id)
+        if serial_query.first():
+            return "Serial já cadastrado nesta aba."
+    if payload.get("numeracao"):
+        numero_query = Equipment.query.filter_by(
+            tab=tab, modelo=payload["modelo"], numeracao=payload["numeracao"]
+        )
+        if exclude_id:
+            numero_query = numero_query.filter(Equipment.id != exclude_id)
+        if numero_query.first():
+            return "Numeração já cadastrada neste modelo."
     return None
 
 
 def normalize_payload(tab: str, data: dict, existing=None):
-    serial = (data.get("serial") or "").strip()
-    numeracao = (data.get("numeracao") or "").strip()
+    sem_serial = bool(data.get("sem_serial"))
+    sem_numeracao = bool(data.get("sem_numeracao"))
+    serial = "" if sem_serial else (data.get("serial") or "").strip()
+    numeracao = "" if sem_numeracao else (data.get("numeracao") or "").strip()
     problema = (data.get("problema") or "").strip()
     status = (data.get("status") or "").strip()
 
@@ -301,9 +306,15 @@ def normalize_payload(tab: str, data: dict, existing=None):
         status = None
     else:
         modelo = (data.get("modelo") or "").strip()
+        if modelo == getattr(config, "OLD_TABLET_MODEL", ""):
+            modelo = config.TABLET_MODEL
 
-    if not serial or not numeracao or not modelo:
-        return None, "Preencha modelo, serial e numeração."
+    if not modelo:
+        return None, "Preencha o modelo."
+    if not sem_serial and not serial:
+        return None, "Informe o serial ou marque que não possui número de série."
+    if not sem_numeracao and not numeracao:
+        return None, "Informe a numeração ou marque que não possui numeração."
 
     allowed_models = config.TAB_MODELS.get(tab) or []
     if allowed_models and modelo not in allowed_models:
