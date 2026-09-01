@@ -142,6 +142,10 @@
       <div id="wrap-patrimonio" hidden>
         <label for="f-patrimonio">Série do patrimônio</label>
         <input class="form-input" id="f-patrimonio" maxlength="120" placeholder="Série do patrimônio">
+        <label class="check-row" for="f-sem-patrimonio">
+          <input type="checkbox" id="f-sem-patrimonio">
+          <span>Não possui número de patrimônio</span>
+        </label>
       </div>
       <div id="wrap-problema">
         <label>Descrição do problema</label>
@@ -384,6 +388,7 @@
     inventoryStatuses: {{ INVENTORY_STATUSES | tojson }},
     maintenanceStatuses: {{ MAINTENANCE_STATUSES | tojson }},
     tabModels: {{ TAB_MODELS | tojson }},
+    tabStatuses: {{ TAB_STATUSES | tojson }},
     gestaoStock: {{ GESTAO_STOCK | tojson }},
     gestaoStockGroups: {{ GESTAO_STOCK_GROUPS | tojson }},
     gestaoMoveTypes: {{ GESTAO_MOVE_TYPES | tojson }},

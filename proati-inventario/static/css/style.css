@@ -496,6 +496,7 @@ table.schedule {
 }
 .btn-ok:hover { background: var(--pastel-green-bg); }
 .badge-ok { background: var(--pastel-green-bg); color: var(--pastel-green); border: 1px solid rgba(168, 230, 200, .2); }
+.badge-danger { background: #1a0a0a; color: #f08080; border: 1px solid #3a1a1a; }
 .btn-save-role {
   border-color: var(--pastel-green);
   background: var(--pastel-green-bg);

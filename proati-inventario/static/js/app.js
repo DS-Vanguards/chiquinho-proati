@@ -87,12 +87,24 @@ function selectedModelo() {
 function syncPatrimonioField(item) {
   const wrap = $("wrap-patrimonio");
   const input = $("f-patrimonio");
+  const box = $("f-sem-patrimonio");
   if (!wrap || !input) return;
   const show = isTecnico() && selectedModelo().toLowerCase() === "thinkpad";
   wrap.hidden = !show;
-  input.required = show;
-  if (!show) input.value = "";
-  else if (item && item.serie_patrimonio) input.value = item.serie_patrimonio;
+  if (!show) {
+    input.value = "";
+    input.required = false;
+    input.disabled = false;
+    if (box) box.checked = false;
+    return;
+  }
+  if (item) {
+    input.value = item.serie_patrimonio || "";
+    if (box) box.checked = !item.serie_patrimonio;
+  } else if (box) {
+    box.checked = false;
+  }
+  syncSkipField("f-sem-patrimonio", "f-patrimonio");
 }
 
 function syncSkipField(checkId, inputId) {
@@ -116,6 +128,8 @@ function tabModels() {
 
 function tabStatuses() {
   if (!canFilterStatus()) return [];
+  const mapped = (window.PROATI.tabStatuses || {})[state.tab];
+  if (mapped && mapped.length) return mapped;
   if (isMaintenance()) return window.PROATI.maintenanceStatuses || [];
   return window.PROATI.inventoryStatuses || [];
 }
@@ -226,6 +240,7 @@ function badgeClass(status) {
   const map = {
     "Perfeito estado": "badge-t",
     "Danos periféricos": "badge-yellow",
+    Roubado: "badge-danger",
     "Aguardando chamado": "badge-yellow",
     "Chamado realizado": "badge-t",
     "Aguardando inspeção": "badge-n",
@@ -279,10 +294,12 @@ function renderStats(items) {
   }
   const ok = items.filter((i) => i.status === "Perfeito estado").length;
   const peri = items.filter((i) => i.status === "Danos periféricos").length;
+  const stolen = isTecnico() ? items.filter((i) => i.status === "Roubado").length : 0;
   grid.innerHTML = `
     <div class="stat-item"><div class="stat-label">Total</div><div class="stat-val yellow">${items.length}</div><div class="stat-unit">unidades</div></div>
     <div class="stat-item"><div class="stat-label">Perfeito estado</div><div class="stat-val green">${ok}</div><div class="stat-unit">unidades</div></div>
-    <div class="stat-item"><div class="stat-label">Danos periféricos</div><div class="stat-val blue">${peri}</div><div class="stat-unit">unidades</div></div>`;
+    <div class="stat-item"><div class="stat-label">Danos periféricos</div><div class="stat-val blue">${peri}</div><div class="stat-unit">unidades</div></div>
+    ${isTecnico() ? `<div class="stat-item"><div class="stat-label">Roubado</div><div class="stat-val" style="color:#f08080">${stolen}</div><div class="stat-unit">unidades</div></div>` : ""}`;
 }
 
 function showActionsColumn() {
@@ -494,7 +511,9 @@ function openModal(item) {
   $("wrap-problema").style.display = meta.kind === "maintenance" ? "block" : "none";
   $("wrap-status").style.display = meta.skipStatus ? "none" : "block";
   const select = $("f-status");
-  const options = meta.kind === "maintenance" ? window.PROATI.maintenanceStatuses : window.PROATI.inventoryStatuses;
+  const options =
+    (window.PROATI.tabStatuses || {})[state.tab] ||
+    (meta.kind === "maintenance" ? window.PROATI.maintenanceStatuses : window.PROATI.inventoryStatuses);
   select.innerHTML = options.map((s) => `<option value="${s}">${s}</option>`).join("");
   if (item?.status) select.value = item.status;
   $("equip-modal").classList.add("open");
@@ -524,7 +543,8 @@ async function saveEquipment(event) {
     numeracao: $("f-sem-numeracao").checked ? "" : $("f-numeracao").value.trim(),
     sem_serial: $("f-sem-serial").checked,
     sem_numeracao: $("f-sem-numeracao").checked,
-    serie_patrimonio: $("f-patrimonio").value.trim(),
+    sem_patrimonio: $("f-sem-patrimonio").checked,
+    serie_patrimonio: $("f-sem-patrimonio").checked ? "" : $("f-patrimonio").value.trim(),
     problema: $("f-problema").value.trim(),
     status: $("f-status").value,
   };
@@ -1205,6 +1225,9 @@ $("patrimonio-modal").addEventListener("click", (e) => {
 $("equip-form").addEventListener("submit", saveEquipment);
 $("f-sem-serial").addEventListener("change", syncSkipFields);
 $("f-sem-numeracao").addEventListener("change", syncSkipFields);
+$("f-sem-patrimonio").addEventListener("change", () => {
+  syncSkipField("f-sem-patrimonio", "f-patrimonio");
+});
 $("f-modelo-select").addEventListener("change", () => {
   const id = $("equip-id").value;
   const item = state.items.find((row) => String(row.id) === String(id));

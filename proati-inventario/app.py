@@ -321,7 +321,8 @@ def normalize_payload(tab: str, data: dict, existing=None):
         return None, "Selecione um modelo válido."
 
     if is_inventory_tab(tab) and not is_tablet_like_tab(tab):
-        if status not in config.INVENTORY_STATUSES:
+        allowed_statuses = config.TAB_STATUSES.get(tab) or config.INVENTORY_STATUSES
+        if status not in allowed_statuses:
             return None, "Selecione um status válido."
     elif is_maintenance_tab(tab):
         if not problema:
@@ -332,9 +333,12 @@ def normalize_payload(tab: str, data: dict, existing=None):
         status = existing.status if existing else None
 
     serie_patrimonio = (data.get("serie_patrimonio") or "").strip()[:120]
+    sem_patrimonio = bool(data.get("sem_patrimonio"))
     if tab == "tecnico" and modelo.lower() == "thinkpad":
-        if not serie_patrimonio:
-            return None, "Informe a série do patrimônio."
+        if sem_patrimonio:
+            serie_patrimonio = None
+        elif not serie_patrimonio:
+            return None, "Informe a série do patrimônio ou marque que não possui."
     else:
         serie_patrimonio = None
 
@@ -364,6 +368,7 @@ def inject_globals():
         "INVENTORY_STATUSES": config.INVENTORY_STATUSES,
         "MAINTENANCE_STATUSES": config.MAINTENANCE_STATUSES,
         "TAB_MODELS": config.TAB_MODELS,
+        "TAB_STATUSES": config.TAB_STATUSES,
         "GESTAO_STOCK": config.GESTAO_STOCK,
         "GESTAO_STOCK_GROUPS": config.GESTAO_STOCK_GROUPS,
         "GESTAO_MOVE_TYPES": config.GESTAO_MOVE_TYPES,
