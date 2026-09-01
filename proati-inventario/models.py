@@ -446,7 +446,14 @@ def ensure_schema():
         db.session.execute(
             text(
                 "UPDATE equipment SET status = 'Danos periféricos' "
-                "WHERE status IN ('Inoperante', 'Danos físicos', 'Danos perifericos')"
+                "WHERE status IN ('Inoperante', 'Danos perifericos') "
+                "OR (status = 'Danos físicos' AND tab != 'tablets')"
+            )
+        )
+        db.session.execute(
+            text(
+                "UPDATE equipment SET status = 'Perfeito estado' "
+                "WHERE tab = 'tablets' AND (status IS NULL OR status = '')"
             )
         )
         db.session.commit()

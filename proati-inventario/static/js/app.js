@@ -1,5 +1,5 @@
 const TABS = {
-  tablets: { label: "Tablets", kind: "inventory", skipStatus: true, fixedModel: true },
+  tablets: { label: "Tablets", kind: "inventory", fixedModel: true },
   regular: { label: "Regular", kind: "inventory", models: ["Multilaser", "Positivo", "Chromebook"] },
   tecnico: { label: "Técnico", kind: "inventory", models: ["ThinkPad", "Positivo"] },
   manutencao: { label: "Manutenção", kind: "maintenance", models: ["Multilaser", "Positivo T2040", "Positivo", "Chromebook"] },
@@ -135,7 +135,7 @@ function tabStatuses() {
 }
 
 function canFilterStatus() {
-  return ["regular", "tecnico", "manutencao", "manutencao_tecnico"].includes(state.tab);
+  return ["tablets", "regular", "tecnico", "manutencao", "manutencao_tecnico"].includes(state.tab);
 }
 
 function visibleItems(items) {
@@ -240,6 +240,7 @@ function badgeClass(status) {
   const map = {
     "Perfeito estado": "badge-t",
     "Danos periféricos": "badge-yellow",
+    "Danos físicos": "badge-n",
     Roubado: "badge-danger",
     "Aguardando chamado": "badge-yellow",
     "Chamado realizado": "badge-t",
@@ -274,13 +275,6 @@ function renderStats(items) {
     grid.innerHTML = cards.join("");
     return;
   }
-  if (currentMeta().fixedModel) {
-    grid.innerHTML = `
-      <div class="stat-item"><div class="stat-label">${currentMeta().label}</div><div class="stat-val blue">${items.length}</div><div class="stat-unit">unidades</div></div>
-      <div class="stat-item"><div class="stat-label">Modelo</div><div class="stat-val" style="font-size:15px;color:var(--pastel-purple)">${window.PROATI.tabletModel}</div><div class="stat-unit">único da escola</div></div>
-      <div class="stat-item"><div class="stat-label">Aba</div><div class="stat-val green">${currentMeta().label.toUpperCase()}</div><div class="stat-unit">inventário</div></div>`;
-    return;
-  }
   if (isMaintenance()) {
     const a = items.filter((i) => i.status === "Aguardando chamado").length;
     const b = items.filter((i) => i.status === "Chamado realizado").length;
@@ -292,14 +286,35 @@ function renderStats(items) {
       <div class="stat-item"><div class="stat-label">Aguardando inspeção</div><div class="stat-val" style="color:var(--pastel-orange)">${c}</div><div class="stat-unit">itens</div></div>`;
     return;
   }
-  const ok = items.filter((i) => i.status === "Perfeito estado").length;
-  const peri = items.filter((i) => i.status === "Danos periféricos").length;
-  const stolen = isTecnico() ? items.filter((i) => i.status === "Roubado").length : 0;
-  grid.innerHTML = `
-    <div class="stat-item"><div class="stat-label">Total</div><div class="stat-val yellow">${items.length}</div><div class="stat-unit">unidades</div></div>
-    <div class="stat-item"><div class="stat-label">Perfeito estado</div><div class="stat-val green">${ok}</div><div class="stat-unit">unidades</div></div>
-    <div class="stat-item"><div class="stat-label">Danos periféricos</div><div class="stat-val blue">${peri}</div><div class="stat-unit">unidades</div></div>
-    ${isTecnico() ? `<div class="stat-item"><div class="stat-label">Roubado</div><div class="stat-val" style="color:#f08080">${stolen}</div><div class="stat-unit">unidades</div></div>` : ""}`;
+  const statuses = (window.PROATI.tabStatuses || {})[state.tab] || [];
+  if (statuses.length) {
+    const colorFor = {
+      "Perfeito estado": "green",
+      "Danos periféricos": "blue",
+      "Danos físicos": "orange",
+      Roubado: "",
+    };
+    const cards = [
+      `<div class="stat-item"><div class="stat-label">Total</div><div class="stat-val yellow">${items.length}</div><div class="stat-unit">unidades</div></div>`,
+    ];
+    statuses.forEach((status) => {
+      const count = items.filter((i) => i.status === status).length;
+      const color = colorFor[status] || "blue";
+      const style = status === "Roubado" ? ` style="color:#f08080"` : "";
+      const cls = color ? ` ${color}` : "";
+      cards.push(
+        `<div class="stat-item"><div class="stat-label">${escapeHtml(status)}</div><div class="stat-val${cls}"${style}>${count}</div><div class="stat-unit">unidades</div></div>`
+      );
+    });
+    grid.innerHTML = cards.join("");
+    return;
+  }
+  if (currentMeta().fixedModel) {
+    grid.innerHTML = `
+      <div class="stat-item"><div class="stat-label">${currentMeta().label}</div><div class="stat-val blue">${items.length}</div><div class="stat-unit">unidades</div></div>
+      <div class="stat-item"><div class="stat-label">Modelo</div><div class="stat-val" style="font-size:15px;color:var(--pastel-purple)">${window.PROATI.tabletModel}</div><div class="stat-unit">único da escola</div></div>
+      <div class="stat-item"><div class="stat-label">Aba</div><div class="stat-val green">${currentMeta().label.toUpperCase()}</div><div class="stat-unit">inventário</div></div>`;
+  }
 }
 
 function showActionsColumn() {

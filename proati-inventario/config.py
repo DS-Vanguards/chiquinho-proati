@@ -223,8 +223,9 @@ TAB_ICONS = {
 TABLET_MODEL = "Positivo T2040"
 OLD_TABLET_MODEL = "Multilaser T2040"
 
-INVENTORY_STATUSES = ["Perfeito estado", "Danos periféricos"]
-TECNICO_STATUSES = ["Perfeito estado", "Danos periféricos", "Roubado"]
+INVENTORY_STATUSES = ["Perfeito estado", "Danos periféricos", "Roubado"]
+TECNICO_STATUSES = INVENTORY_STATUSES
+TABLET_STATUSES = ["Perfeito estado", "Danos físicos", "Roubado"]
 MAINTENANCE_STATUSES = [
     "Aguardando chamado",
     "Chamado realizado",
@@ -238,6 +239,7 @@ TAB_MODELS = {
 }
 MAINTENANCE_MODELS = TAB_MODELS
 TAB_STATUSES = {
+    "tablets": TABLET_STATUSES,
     "regular": INVENTORY_STATUSES,
     "tecnico": TECNICO_STATUSES,
     "manutencao": MAINTENANCE_STATUSES,

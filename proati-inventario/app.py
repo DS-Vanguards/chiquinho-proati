@@ -303,7 +303,6 @@ def normalize_payload(tab: str, data: dict, existing=None):
 
     if is_tablet_like_tab(tab):
         modelo = config.TABLET_MODEL
-        status = None
     else:
         modelo = (data.get("modelo") or "").strip()
         if modelo == getattr(config, "OLD_TABLET_MODEL", ""):
@@ -320,7 +319,7 @@ def normalize_payload(tab: str, data: dict, existing=None):
     if allowed_models and modelo not in allowed_models:
         return None, "Selecione um modelo válido."
 
-    if is_inventory_tab(tab) and not is_tablet_like_tab(tab):
+    if is_inventory_tab(tab):
         allowed_statuses = config.TAB_STATUSES.get(tab) or config.INVENTORY_STATUSES
         if status not in allowed_statuses:
             return None, "Selecione um status válido."
