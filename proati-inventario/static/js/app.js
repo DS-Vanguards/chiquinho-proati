@@ -885,6 +885,7 @@ function roleLabel(role) {
     proati: "Proati",
     coordenador: "Coordenador",
     professor: "Professor",
+    professor_tecnico: "Professor Técnico",
     visualizador: "Visualizador",
   };
   return map[role] || role;

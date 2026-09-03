@@ -62,6 +62,14 @@ class User(UserMixin, db.Model):
         return self.role == "professor"
 
     @property
+    def is_professor_tecnico(self) -> bool:
+        return self.role == "professor_tecnico"
+
+    @property
+    def is_teacher(self) -> bool:
+        return self.role in config.TEACHER_ROLES
+
+    @property
     def is_visualizador(self) -> bool:
         return self.role == "visualizador"
 
@@ -88,7 +96,7 @@ class User(UserMixin, db.Model):
         return config.can_edit_tab(self.role, tab)
 
     def can_write_reports(self) -> bool:
-        return self.is_professor or self.can_manage_users()
+        return self.is_teacher or self.can_manage_users()
 
     def can_close_other_reports(self) -> bool:
         return self.is_super_admin or self.is_vgs_owner

@@ -70,6 +70,7 @@ ROLES = [
     "proati",
     "coordenador",
     "professor",
+    "professor_tecnico",
     "visualizador",
 ]
 
@@ -80,6 +81,7 @@ ROLE_LABELS = {
     "proati": "Proati",
     "coordenador": "Coordenador",
     "professor": "Professor",
+    "professor_tecnico": "Professor Técnico",
     "visualizador": "Visualizador",
 }
 
@@ -90,13 +92,15 @@ ROLE_RANK = {
     "proati": 20,
     "coordenador": 10,
     "professor": 5,
+    "professor_tecnico": 5,
     "visualizador": 0,
 }
 
 STAFF_ROLES = ("vgs_owner", "super_admin", "admin")
 STOCK_ROLES = ("vgs_owner", "super_admin", "admin", "proati")
-EDITOR_ROLES = ("vgs_owner", "super_admin", "admin", "proati", "professor")
-VIEWER_ROLES = ("vgs_owner", "super_admin", "admin", "proati", "coordenador", "professor")
+EDITOR_ROLES = ("vgs_owner", "super_admin", "admin", "proati", "professor", "professor_tecnico")
+VIEWER_ROLES = ("vgs_owner", "super_admin", "admin", "proati", "coordenador", "professor", "professor_tecnico")
+TEACHER_ROLES = ("professor", "professor_tecnico")
 
 
 def role_label(role: str) -> str:
@@ -151,22 +155,24 @@ def is_teacher_email(email: str) -> bool:
 
 def allowed_tabs(role: str) -> list[str]:
     if role == "professor":
-        return list(GESTAO_TABS)
+        return list(PROFESSOR_TABS)
+    if role == "professor_tecnico":
+        return list(PROFESSOR_TECNICO_TABS)
     if role in VIEWER_ROLES:
         return list(ALL_TABS)
     return []
 
 
 def nav_main_tabs(role: str) -> list[str]:
-    if role == "professor":
-        return list(GESTAO_TABS)
+    if role in TEACHER_ROLES:
+        return list(allowed_tabs(role))
     if role in VIEWER_ROLES:
         return list(MAIN_NAV_TABS)
     return []
 
 
 def nav_overflow_tabs(role: str) -> list[str]:
-    if role == "professor" or role not in VIEWER_ROLES:
+    if role in TEACHER_ROLES or role not in VIEWER_ROLES:
         return []
     extra = list(OVERFLOW_NAV_TABS)
     if role in STOCK_ROLES:
@@ -183,13 +189,15 @@ def can_access_tab(role: str, tab: str) -> bool:
 def can_edit_tab(role: str, tab: str) -> bool:
     if tab == "admin" or tab not in ALL_TABS:
         return False
-    if role == "professor":
-        return tab in GESTAO_TABS
+    if role in TEACHER_ROLES:
+        return tab in allowed_tabs(role)
     return role in EDITOR_ROLES
 
 INVENTORY_TABS = ["tablets", "regular", "tecnico"]
 MAINTENANCE_TABS = ["manutencao", "manutencao_tecnico"]
 GESTAO_TABS = ["gestao", "gestao_tablet", "gestao_tecnico"]
+PROFESSOR_TABS = ["gestao", "gestao_tablet"]
+PROFESSOR_TECNICO_TABS = ["gestao", "gestao_tablet", "gestao_tecnico"]
 TABLET_LIKE_TABS = ["tablets"]
 EQUIPMENT_TABS = INVENTORY_TABS + MAINTENANCE_TABS
 ALL_TABS = EQUIPMENT_TABS + GESTAO_TABS

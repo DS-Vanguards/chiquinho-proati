@@ -593,7 +593,7 @@ def painel():
         can_edit=current_user.can_edit_inventory(),
         is_admin=current_user.can_manage_users(),
         can_manage_stock=current_user.can_manage_stock(),
-        is_professor=current_user.is_professor,
+        is_professor=current_user.is_teacher,
         user_id=current_user.id,
         main_tabs=main_tabs,
         overflow_tabs=overflow_tabs,

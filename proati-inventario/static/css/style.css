@@ -429,6 +429,7 @@ table.schedule {
 .badge-proati { background: var(--pastel-purple-bg); color: var(--pastel-purple); border: 1px solid rgba(200, 168, 240, .2); }
 .badge-coordenador { background: var(--pastel-blue-bg); color: var(--pastel-blue); border: 1px solid rgba(168, 200, 240, .2); }
 .badge-professor { background: var(--pastel-pink-bg); color: var(--pastel-pink); border: 1px solid rgba(240, 168, 200, .25); }
+.badge-professor_tecnico { background: var(--pastel-purple-bg); color: var(--pastel-purple); border: 1px solid rgba(200, 168, 240, .25); }
 .badge-visualizador { background: var(--surface3); color: var(--text2); border: 1px solid var(--border2); }
 
 .empty {
