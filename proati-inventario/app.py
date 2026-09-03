@@ -852,10 +852,10 @@ def api_return_report(item_id):
     item, error = load_relatorio_or_error(item_id)
     if error:
         return error
-    if item.professor_id != current_user.id:
-        return jsonify({"erro": "Só quem criou o relatório pode devolvê-lo."}), 403
     if item.status != "Em uso":
         return jsonify({"erro": "Este relatório já foi devolvido."}), 400
+    if item.professor_id != current_user.id and not current_user.can_close_other_reports():
+        return jsonify({"erro": "Só é possível devolver os próprios relatórios."}), 403
 
     data = request.get_json(silent=True) or {}
     ainda_com_destinatario = bool(data.get("ainda_com_destinatario")) and bool(item.destinatario)

@@ -90,6 +90,9 @@ class User(UserMixin, db.Model):
     def can_write_reports(self) -> bool:
         return self.is_professor or self.can_manage_users()
 
+    def can_close_other_reports(self) -> bool:
+        return self.is_super_admin or self.is_vgs_owner
+
 
 class DeviceBlock(db.Model):
     __tablename__ = "device_blocks"
@@ -189,6 +192,11 @@ class Relatorio(db.Model):
         mine = bool(viewer and self.professor_id == viewer.id)
         can_write = bool(viewer and viewer.can_write_reports())
         can_alter = mine and can_write and self.status == "Em uso"
+        can_return = (
+            can_write
+            and self.status == "Em uso"
+            and (mine or bool(viewer and viewer.can_close_other_reports()))
+        )
         can_delete = bool(viewer and viewer.can_manage_users())
         movimentos = [
             movimento.to_dict()
@@ -210,6 +218,7 @@ class Relatorio(db.Model):
             "sala_destino": self.sala_destino or "",
             "mine": mine,
             "can_alter": can_alter,
+            "can_return": can_return,
             "can_delete": can_delete,
             "movimentos": movimentos,
         }

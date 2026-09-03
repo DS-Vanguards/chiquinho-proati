@@ -264,16 +264,26 @@
     </div>
     <form class="modal-body" id="report-return-form">
       <input type="hidden" id="rd-id">
-      <label for="rd-modelos">Modelos</label>
+      <div id="wrap-rd-pick" hidden>
+        <label for="rd-pick">Relatório</label>
+        <select class="form-input" id="rd-pick"></select>
+      </div>
+      <label for="rd-modelos">Modelo</label>
       <input class="form-input fixed" id="rd-modelos" maxlength="200" readonly>
       <label for="rd-quantidade">Quantidade</label>
       <input class="form-input fixed" id="rd-quantidade" type="number" readonly>
+      <div id="wrap-transferidos" hidden>
+        <label for="rd-transferidos">Transferidos</label>
+        <input class="form-input fixed" id="rd-transferidos" readonly>
+        <label class="check-row" id="wrap-ainda-com">
+          <input type="checkbox" id="rd-ainda-com">
+          <span id="rd-ainda-com-label">Os notebooks ainda estão com o destinatário</span>
+        </label>
+      </div>
       <label for="rd-quantidade-atual">Quantidade atual</label>
       <input class="form-input fixed" id="rd-quantidade-atual" type="number" readonly>
-      <label class="check-row" id="wrap-ainda-com" hidden>
-        <input type="checkbox" id="rd-ainda-com">
-        <span id="rd-ainda-com-label">Os notebooks ainda estão com o destinatário</span>
-      </label>
+      <label for="rd-professor">Professor</label>
+      <input class="form-input fixed" id="rd-professor" readonly>
     </form>
     <div class="modal-footer">
       <button class="close-footer-btn" type="button" id="report-return-cancel">CANCELAR</button>

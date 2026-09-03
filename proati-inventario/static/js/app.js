@@ -590,8 +590,77 @@ async function removeEquipment(id) {
   }
 }
 
-function lastOpenReport() {
-  return (state.items || []).find((item) => item.status === "Em uso" && item.mine);
+function returnableReports() {
+  return (state.items || []).filter((item) => item.status === "Em uso" && item.can_return);
+}
+
+function transferInfo(item) {
+  const moves = (item.movimentos || []).filter((move) => move.tipo === "Transferido");
+  if (!moves.length) {
+    if (item.destinatario) {
+      const parts = [item.destinatario];
+      if (item.sala_destino) parts.push(`sala ${item.sala_destino}`);
+      return { has: true, text: parts.join(" · "), dest: item.destinatario };
+    }
+    return { has: false, text: "", dest: "" };
+  }
+  const text = moves
+    .map((move) => {
+      const parts = [];
+      if (move.quantidade) parts.push(String(move.quantidade));
+      parts.push(move.destinatario || item.destinatario || "destinatário");
+      if (move.sala_destino || item.sala_destino) {
+        parts.push(`sala ${move.sala_destino || item.sala_destino}`);
+      }
+      return parts.join(" · ");
+    })
+    .join("; ");
+  const dest = item.destinatario || moves[moves.length - 1].destinatario || "";
+  return { has: true, text, dest };
+}
+
+function fillReturnForm(item) {
+  if (!item) return;
+  $("rd-id").value = item.id;
+  $("rd-modelos").value = item.modelos || "";
+  $("rd-quantidade").value = item.quantidade || "";
+  $("rd-quantidade-atual").value = item.quantidade_atual || "";
+  $("rd-professor").value = item.professor || "";
+  const transfer = transferInfo(item);
+  $("rd-transferidos").value = transfer.text;
+  $("wrap-transferidos").hidden = !transfer.has;
+  $("rd-ainda-com").checked = false;
+  $("rd-ainda-com-label").textContent = transfer.dest
+    ? `Os notebooks ainda estão com ${transfer.dest}`
+    : "Os notebooks ainda estão com o destinatário";
+}
+
+function openReturnModal() {
+  const reports = returnableReports();
+  closeReportKindModal();
+  if (!reports.length) {
+    showToast("✘ Não há relatório em uso para devolver.");
+    return;
+  }
+  const pickWrap = $("wrap-rd-pick");
+  const pick = $("rd-pick");
+  pick.innerHTML = reports
+    .map((item) => {
+      const label = [
+        item.modelos || "Modelo",
+        `qtd ${item.quantidade_atual ?? item.quantidade ?? ""}`,
+        item.sala ? `sala ${item.sala}` : "",
+        item.professor || "",
+      ]
+        .filter(Boolean)
+        .join(" · ");
+      return `<option value="${item.id}">${escapeHtml(label)}</option>`;
+    })
+    .join("");
+  pickWrap.hidden = reports.length < 2;
+  pick.value = String(reports[0].id);
+  fillReturnForm(reports[0]);
+  $("report-return-modal").classList.add("open");
 }
 
 function openReportKindModal() {
@@ -637,26 +706,6 @@ async function saveReport(event) {
   }
 }
 
-function openReturnModal() {
-  const item = lastOpenReport();
-  closeReportKindModal();
-  if (!item) {
-    showToast("✘ Não há relatório em uso para devolver.");
-    return;
-  }
-  $("rd-id").value = item.id;
-  $("rd-modelos").value = item.modelos || "";
-  $("rd-quantidade").value = item.quantidade || "";
-  $("rd-quantidade-atual").value = item.quantidade_atual || "";
-  $("rd-ainda-com").checked = false;
-  const hasDest = Boolean(item.destinatario);
-  $("wrap-ainda-com").hidden = !hasDest;
-  $("rd-ainda-com-label").textContent = hasDest
-    ? `Os notebooks ainda estão com ${item.destinatario}`
-    : "Os notebooks ainda estão com o destinatário";
-  $("report-return-modal").classList.add("open");
-}
-
 function closeReturnModal() {
   $("report-return-modal").classList.remove("open");
 }
@@ -668,7 +717,7 @@ async function saveReturnReport(event) {
     await request(`/api/relatorios/${id}/devolver`, {
       method: "POST",
       body: JSON.stringify({
-        ainda_com_destinatario: Boolean($("rd-ainda-com").checked && !$("wrap-ainda-com").hidden),
+        ainda_com_destinatario: Boolean($("rd-ainda-com").checked && !$("wrap-transferidos").hidden),
       }),
     });
     showToast("✔ Relatório de devolução salvo");
@@ -1307,6 +1356,10 @@ $("report-return-modal").addEventListener("click", (e) => {
   if (e.target.id === "report-return-modal") closeReturnModal();
 });
 $("report-return-form").addEventListener("submit", saveReturnReport);
+$("rd-pick").addEventListener("change", () => {
+  const item = returnableReports().find((row) => String(row.id) === String($("rd-pick").value));
+  fillReturnForm(item);
+});
 
 $("report-alter-close").addEventListener("click", closeAlterModal);
 $("report-alter-cancel").addEventListener("click", closeAlterModal);
