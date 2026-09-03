@@ -763,7 +763,7 @@ function renderDetailsList() {
   const filter = state.detailsFilter;
   const moves = item?.movimentos || [];
   const filtered = moves.filter((move) => {
-    if (!filter) return move.tipo === "Criado";
+    if (!filter) return move.tipo === "Criado" || move.tipo === "Devolução";
     return move.tipo === filter;
   });
   const empty = {
@@ -778,16 +778,23 @@ function renderDetailsList() {
   list.innerHTML = filtered
     .map((move) => {
       const extra = [];
-      if (move.quantidade) extra.push(`Quantidade: ${escapeHtml(move.quantidade)}`);
-      if (move.destinatario) {
+      if (move.quantidade) {
+        extra.push(
+          move.tipo === "Devolução"
+            ? `Quantidade entregue: ${escapeHtml(move.quantidade)}`
+            : `Quantidade: ${escapeHtml(move.quantidade)}`
+        );
+      }
+      if (move.destinatario && move.tipo !== "Devolução") {
         const personLabel = move.tipo === "Coletado transferência" ? "Remetente" : "Destinatário";
         extra.push(`${personLabel}: ${escapeHtml(move.destinatario)}`);
       }
       if (move.sala_destino) extra.push(`Sala de destino: ${escapeHtml(move.sala_destino)}`);
       if (move.detalhe) extra.push(escapeHtml(move.detalhe));
+      const title = move.tipo === "Devolução" ? "Entrega" : move.tipo;
       return `<div class="history-item">
         <div class="history-when">${escapeHtml(move.quando)}</div>
-        <div class="history-title">${escapeHtml(move.tipo)}</div>
+        <div class="history-title">${escapeHtml(title)}</div>
         <div class="history-meta">Conta: ${escapeHtml(move.usuario)}${move.cargo ? " · " + escapeHtml(move.cargo) : ""}</div>
         ${extra.length ? `<div class="history-meta">${extra.join("<br>")}</div>` : ""}
       </div>`;

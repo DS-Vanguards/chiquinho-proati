@@ -859,16 +859,19 @@ def api_return_report(item_id):
 
     data = request.get_json(silent=True) or {}
     ainda_com_destinatario = bool(data.get("ainda_com_destinatario")) and bool(item.destinatario)
+    quantidade_entregue = int(item.quantidade_atual or 0)
     item.status = "Pendente" if ainda_com_destinatario else "Entregues"
     item.updated_at = datetime.utcnow()
+    if ainda_com_destinatario:
+        detalhe = f"Deixou notebook com outro professor: sim ({item.destinatario})"
+    else:
+        detalhe = "Deixou notebook com outro professor: não"
     log_relatorio_movimento(
         item,
         "Devolução",
-        detalhe=(
-            f"Notebooks ainda com {item.destinatario}"
-            if ainda_com_destinatario
-            else "Relatório de devolução"
-        ),
+        quantidade=quantidade_entregue,
+        destinatario=item.destinatario if ainda_com_destinatario else "",
+        detalhe=detalhe,
     )
     db.session.commit()
     return jsonify({"item": item.to_dict(viewer=current_user)})
