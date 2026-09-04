@@ -671,6 +671,28 @@ function closeReportKindModal() {
   $("report-kind-modal").classList.remove("open");
 }
 
+function syncReportProfessorField() {
+  const wrap = $("wrap-report-professor");
+  const input = $("r-professor");
+  const check = $("r-usar-proprio-nome");
+  if (!wrap || !input || !check) return;
+  const isOwner = Boolean(window.PROATI.isVgsOwner);
+  wrap.hidden = !isOwner;
+  if (!isOwner) {
+    input.required = false;
+    input.readOnly = false;
+    return;
+  }
+  if (check.checked) {
+    input.value = window.PROATI.username || "";
+    input.readOnly = true;
+    input.required = false;
+  } else {
+    input.readOnly = false;
+    input.required = true;
+  }
+}
+
 function openReportModal() {
   closeReportKindModal();
   const models = (window.PROATI.gestaoStock || {})[state.tab] || [];
@@ -679,6 +701,11 @@ function openReportModal() {
     models.map((item) => `<option value="${escapeHtml(item.modelo)}">${escapeHtml(item.modelo)}</option>`).join("");
   $("r-quantidade").value = "";
   $("r-sala").value = "";
+  const professor = $("r-professor");
+  const useOwn = $("r-usar-proprio-nome");
+  if (professor) professor.value = "";
+  if (useOwn) useOwn.checked = false;
+  syncReportProfessorField();
   $("report-modal").classList.add("open");
 }
 
@@ -689,14 +716,19 @@ function closeReportModal() {
 async function saveReport(event) {
   event.preventDefault();
   try {
+    const payload = {
+      tab: state.tab,
+      modelos: $("r-modelos").value.trim(),
+      quantidade: $("r-quantidade").value,
+      sala: $("r-sala").value.trim(),
+    };
+    if (window.PROATI.isVgsOwner) {
+      payload.usar_proprio_nome = Boolean($("r-usar-proprio-nome")?.checked);
+      payload.professor = $("r-professor")?.value.trim() || "";
+    }
     await request("/api/relatorios", {
       method: "POST",
-      body: JSON.stringify({
-        tab: state.tab,
-        modelos: $("r-modelos").value.trim(),
-        quantidade: $("r-quantidade").value,
-        sala: $("r-sala").value.trim(),
-      }),
+      body: JSON.stringify(payload),
     });
     showToast("✔ Relatório de retirada adicionado");
     closeReportModal();
@@ -1340,6 +1372,7 @@ $("report-modal").addEventListener("click", (e) => {
   if (e.target.id === "report-modal") closeReportModal();
 });
 $("report-form").addEventListener("submit", saveReport);
+$("r-usar-proprio-nome").addEventListener("change", syncReportProfessorField);
 
 $("report-kind-close").addEventListener("click", closeReportKindModal);
 $("report-kind-cancel").addEventListener("click", closeReportKindModal);

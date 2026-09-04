@@ -21,6 +21,7 @@ from flask_login import (
     logout_user,
 )
 from flask_wtf.csrf import CSRFError, CSRFProtect, generate_csrf
+from sqlalchemy import func
 from sqlalchemy.exc import IntegrityError
 
 import config
@@ -237,6 +238,20 @@ def deny_report_write():
     if not current_user.can_write_reports():
         return jsonify({"erro": "Sem permissão para gerenciar relatórios."}), 403
     return None
+
+
+def resolve_report_professor(data):
+    if not current_user.is_vgs_owner:
+        return current_user.id, current_user.username, None
+    if data.get("usar_proprio_nome"):
+        return current_user.id, current_user.username, None
+    nome = (data.get("professor") or "").strip()[:80]
+    if not nome:
+        return None, None, "Informe o professor ou marque o próprio nome de usuário."
+    other = User.query.filter(func.lower(User.username) == nome.lower()).first()
+    if other:
+        return other.id, other.username, None
+    return current_user.id, nome, None
 
 
 def log_relatorio_movimento(
@@ -594,7 +609,9 @@ def painel():
         is_admin=current_user.can_manage_users(),
         can_manage_stock=current_user.can_manage_stock(),
         is_professor=current_user.is_teacher,
+        is_vgs_owner=current_user.is_vgs_owner,
         user_id=current_user.id,
+        username=current_user.username,
         main_tabs=main_tabs,
         overflow_tabs=overflow_tabs,
         default_tab=main_tabs[0] if main_tabs else "tablets",
@@ -757,6 +774,9 @@ def api_create_report():
     stock_error = stock_unavailable_error(tab, modelo, quantidade)
     if stock_error:
         return jsonify({"erro": stock_error}), 400
+    professor_id, professor_nome, professor_error = resolve_report_professor(data)
+    if professor_error:
+        return jsonify({"erro": professor_error}), 400
 
     purge_expired_relatorios()
     item = Relatorio(
@@ -765,8 +785,8 @@ def api_create_report():
         quantidade=quantidade,
         quantidade_atual=quantidade,
         sala=sala,
-        professor_id=current_user.id,
-        professor_nome=current_user.username,
+        professor_id=professor_id,
+        professor_nome=professor_nome,
         status="Em uso",
         alterado=False,
     )

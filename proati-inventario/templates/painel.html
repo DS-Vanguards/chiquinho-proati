@@ -193,6 +193,14 @@
       <input class="form-input" id="r-quantidade" type="number" min="1" step="1" required placeholder="Ex: 10">
       <label for="r-sala">Sala</label>
       <input class="form-input" id="r-sala" maxlength="80" required placeholder="Ex: 12">
+      <div id="wrap-report-professor" hidden>
+        <label for="r-professor">Professor</label>
+        <input class="form-input" id="r-professor" maxlength="80" placeholder="Nome de usuário do professor">
+        <label class="check-row" for="r-usar-proprio-nome">
+          <input type="checkbox" id="r-usar-proprio-nome">
+          <span>Usar meu nome de usuário</span>
+        </label>
+      </div>
     </form>
     <div class="modal-footer">
       <button class="close-footer-btn" type="button" id="report-modal-cancel">CANCELAR</button>
@@ -393,7 +401,9 @@
     isAdmin: {{ is_admin | tojson }},
     canManageStock: {{ can_manage_stock | tojson }},
     isProfessor: {{ is_professor | tojson }},
+    isVgsOwner: {{ is_vgs_owner | tojson }},
     userId: {{ user_id | tojson }},
+    username: {{ username | tojson }},
     tabletModel: {{ TABLET_MODEL | tojson }},
     inventoryStatuses: {{ INVENTORY_STATUSES | tojson }},
     maintenanceStatuses: {{ MAINTENANCE_STATUSES | tojson }},
