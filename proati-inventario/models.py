@@ -1,3 +1,4 @@
+import time
 from datetime import datetime, timedelta
 
 from flask_login import UserMixin
@@ -196,7 +197,7 @@ class Relatorio(db.Model):
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
-    def to_dict(self, *, viewer=None) -> dict:
+    def to_dict(self, *, viewer=None, include_movimentos=True, movement_counts=None) -> dict:
         mine = bool(viewer and self.professor_id == viewer.id)
         can_write = bool(viewer and viewer.can_write_reports())
         can_alter = mine and can_write and self.status == "Em uso"
@@ -206,11 +207,19 @@ class Relatorio(db.Model):
             and (mine or bool(viewer and viewer.can_close_other_reports()))
         )
         can_delete = bool(viewer and viewer.can_manage_users())
-        movimentos = [
-            movimento.to_dict()
-            for movimento in sorted(self.movimentos, key=lambda row: row.created_at or datetime.utcnow())
-        ]
-        return {
+        movimentos = []
+        if include_movimentos:
+            movimentos = [
+                movimento.to_dict()
+                for movimento in sorted(self.movimentos, key=lambda row: row.created_at or datetime.utcnow())
+            ]
+            entregues = sum(1 for move in movimentos if move["tipo"] == "Entregue")
+            transferencias = sum(1 for move in movimentos if move["tipo"] == "Transferido")
+        else:
+            counts = movement_counts or {}
+            entregues = int(counts.get("entregues") or 0)
+            transferencias = int(counts.get("transferencias") or 0)
+        payload = {
             "id": self.id,
             "tab": self.tab,
             "modelos": self.modelos,
@@ -228,8 +237,12 @@ class Relatorio(db.Model):
             "can_alter": can_alter,
             "can_return": can_return,
             "can_delete": can_delete,
-            "movimentos": movimentos,
+            "entregues": entregues,
+            "transferencias": transferencias,
         }
+        if include_movimentos:
+            payload["movimentos"] = movimentos
+        return payload
 
 
 class RelatorioMovimento(db.Model):
@@ -337,19 +350,60 @@ def report_units_out(relatorio, entregue_map=None) -> int:
     return max(0, int(relatorio.quantidade or 0) - entregue)
 
 
+_stock_cache = {"at": 0.0, "data": None}
+_last_purge_at = 0.0
+STOCK_CACHE_TTL = 12
+PURGE_MIN_INTERVAL = 6 * 3600
+
+
+def invalidate_stock_cache():
+    _stock_cache["at"] = 0.0
+    _stock_cache["data"] = None
+
+
+def relatorio_movement_counts(ids):
+    counts = {}
+    if not ids:
+        return counts
+    rows = (
+        db.session.query(
+            RelatorioMovimento.relatorio_id,
+            RelatorioMovimento.tipo,
+            func.count(RelatorioMovimento.id),
+        )
+        .filter(RelatorioMovimento.relatorio_id.in_(ids))
+        .group_by(RelatorioMovimento.relatorio_id, RelatorioMovimento.tipo)
+        .all()
+    )
+    for relatorio_id, tipo, total in rows:
+        bucket = counts.setdefault(relatorio_id, {"entregues": 0, "transferencias": 0})
+        if tipo == "Entregue":
+            bucket["entregues"] = int(total)
+        elif tipo == "Transferido":
+            bucket["transferencias"] = int(total)
+    return counts
+
+
 def stock_snapshot(*, ignore_equipment_id=None, ignore_relatorio_id=None):
+    use_cache = ignore_equipment_id is None and ignore_relatorio_id is None
+    now = time.time()
+    if use_cache and _stock_cache["data"] is not None and now - _stock_cache["at"] < STOCK_CACHE_TTL:
+        return _stock_cache["data"]
+
     totals = {
         (row.pool, row.modelo): int(row.quantidade or 0) for row in SchoolStock.query.all()
     }
     maintenance_used = {}
-    query = Equipment.query.filter(Equipment.tab.in_(config.MAINTENANCE_TABS))
+    maintenance_query = db.session.query(
+        Equipment.tab, Equipment.modelo, func.count(Equipment.id)
+    ).filter(Equipment.tab.in_(tuple(config.MAINTENANCE_TABS)))
     if ignore_equipment_id:
-        query = query.filter(Equipment.id != ignore_equipment_id)
-    for item in query.all():
-        key = maintenance_stock_key(item.tab, item.modelo)
+        maintenance_query = maintenance_query.filter(Equipment.id != ignore_equipment_id)
+    for tab, modelo, total in maintenance_query.group_by(Equipment.tab, Equipment.modelo):
+        key = maintenance_stock_key(tab, modelo)
         if not key:
             continue
-        maintenance_used[key] = maintenance_used.get(key, 0) + 1
+        maintenance_used[key] = maintenance_used.get(key, 0) + int(total)
 
     entregue_map = dict(
         db.session.query(
@@ -361,10 +415,16 @@ def stock_snapshot(*, ignore_equipment_id=None, ignore_relatorio_id=None):
         .all()
     )
     reports_used = {}
-    report_query = Relatorio.query.filter(Relatorio.status != "Entregues")
+    report_query = db.session.query(
+        Relatorio.id,
+        Relatorio.tab,
+        Relatorio.modelos,
+        Relatorio.quantidade,
+        Relatorio.status,
+    ).filter(Relatorio.status != "Entregues")
     if ignore_relatorio_id:
         report_query = report_query.filter(Relatorio.id != ignore_relatorio_id)
-    for report in report_query.all():
+    for report in report_query:
         modelo = match_gestao_modelo(report.tab, report.modelos)
         if not modelo:
             continue
@@ -392,7 +452,11 @@ def stock_snapshot(*, ignore_equipment_id=None, ignore_relatorio_id=None):
         itens.append(row)
         por_aba[spec["pool"]].append(row)
         total += quantidade_total
-    return {"itens": itens, "total": total, "por_aba": por_aba}
+    snapshot = {"itens": itens, "total": total, "por_aba": por_aba}
+    if use_cache:
+        _stock_cache["at"] = now
+        _stock_cache["data"] = snapshot
+    return snapshot
 
 
 def stock_unavailable_error(pool: str, modelo: str, quantidade: int, **ignore):
@@ -414,9 +478,6 @@ def stock_unavailable_error(pool: str, modelo: str, quantidade: int, **ignore):
 
 
 def purge_expired_relatorios() -> int:
-    inspector = inspect(db.engine)
-    if "relatorios" not in inspector.get_table_names():
-        return 0
     cutoff = datetime.utcnow() - timedelta(days=config.RELATORIO_TTL_DAYS)
     expired_ids = [
         item_id
@@ -424,16 +485,25 @@ def purge_expired_relatorios() -> int:
     ]
     if not expired_ids:
         return 0
-    if "relatorio_movimentos" in inspector.get_table_names():
-        RelatorioMovimento.query.filter(
-            RelatorioMovimento.relatorio_id.in_(expired_ids)
-        ).delete(synchronize_session=False)
+    RelatorioMovimento.query.filter(
+        RelatorioMovimento.relatorio_id.in_(expired_ids)
+    ).delete(synchronize_session=False)
     deleted = Relatorio.query.filter(Relatorio.id.in_(expired_ids)).delete(
         synchronize_session=False
     )
     if deleted:
         db.session.commit()
+        invalidate_stock_cache()
     return deleted
+
+
+def maybe_purge_expired_relatorios() -> int:
+    global _last_purge_at
+    now = time.time()
+    if now - _last_purge_at < PURGE_MIN_INTERVAL:
+        return 0
+    _last_purge_at = now
+    return purge_expired_relatorios()
 
 
 def ensure_schema():
@@ -455,25 +525,35 @@ def ensure_schema():
         db.session.commit()
 
     if "equipment" in inspector.get_table_names():
-        db.session.execute(
+        legacy = db.session.execute(
             text(
-                "UPDATE equipment SET status = 'Perfeito estado' WHERE status = 'Operante'"
+                "SELECT 1 FROM equipment WHERE status IN "
+                "('Operante', 'Inoperante', 'Danos perifericos') "
+                "OR (status = 'Danos físicos' AND tab != 'tablets') "
+                "OR (tab = 'tablets' AND (status IS NULL OR status = '')) "
+                "LIMIT 1"
             )
-        )
-        db.session.execute(
-            text(
-                "UPDATE equipment SET status = 'Danos periféricos' "
-                "WHERE status IN ('Inoperante', 'Danos perifericos') "
-                "OR (status = 'Danos físicos' AND tab != 'tablets')"
+        ).first()
+        if legacy:
+            db.session.execute(
+                text(
+                    "UPDATE equipment SET status = 'Perfeito estado' WHERE status = 'Operante'"
+                )
             )
-        )
-        db.session.execute(
-            text(
-                "UPDATE equipment SET status = 'Perfeito estado' "
-                "WHERE tab = 'tablets' AND (status IS NULL OR status = '')"
+            db.session.execute(
+                text(
+                    "UPDATE equipment SET status = 'Danos periféricos' "
+                    "WHERE status IN ('Inoperante', 'Danos perifericos') "
+                    "OR (status = 'Danos físicos' AND tab != 'tablets')"
+                )
             )
-        )
-        db.session.commit()
+            db.session.execute(
+                text(
+                    "UPDATE equipment SET status = 'Perfeito estado' "
+                    "WHERE tab = 'tablets' AND (status IS NULL OR status = '')"
+                )
+            )
+            db.session.commit()
         equip_cols = {column["name"] for column in inspector.get_columns("equipment")}
         if "serie_patrimonio" not in equip_cols:
             db.session.execute(
@@ -488,7 +568,6 @@ def ensure_schema():
         if "remetente" not in relatorio_cols:
             db.session.execute(text("ALTER TABLE relatorios ADD COLUMN remetente VARCHAR(120)"))
             db.session.commit()
-    purge_expired_relatorios()
 
 
 def _constraint_names(table: str) -> set:
@@ -550,6 +629,12 @@ def _rename_tablet_model():
     old = getattr(config, "OLD_TABLET_MODEL", "Multilaser T2040")
     new = config.TABLET_MODEL
     if not old or old == new:
+        return
+    still_old = db.session.execute(
+        text("SELECT 1 FROM equipment WHERE modelo = :old LIMIT 1"),
+        {"old": old},
+    ).first()
+    if not still_old:
         return
     db.session.execute(
         text("UPDATE equipment SET modelo = :new WHERE modelo = :old"),

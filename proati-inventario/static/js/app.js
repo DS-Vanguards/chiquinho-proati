@@ -23,6 +23,10 @@ const state = {
   estoque: null,
 };
 
+const tabCache = Object.create(null);
+let loadGen = 0;
+let tabAbort = null;
+
 function $(id) {
   return document.getElementById(id);
 }
@@ -385,9 +389,8 @@ function renderRows(items) {
         const actions = actionsOn
           ? `<td class="actions-cell">${buttons.join("")}</td>`
           : "";
-        const movimentos = item.movimentos || [];
-        const entregues = movimentos.filter((move) => move.tipo === "Entregue").length;
-        const transferencias = movimentos.filter((move) => move.tipo === "Transferido").length;
+        const entregues = item.entregues ?? (item.movimentos || []).filter((move) => move.tipo === "Entregue").length;
+        const transferencias = item.transferencias ?? (item.movimentos || []).filter((move) => move.tipo === "Transferido").length;
         return `<tr>
           <td class="td-num"><span class="num-badge">${idx + 1}</span></td>
           <td class="td-tab">${escapeHtml(item.modelos)}</td>
@@ -448,34 +451,70 @@ function escapeHtml(value) {
     .replace(/"/g, "&quot;");
 }
 
-async function loadEquipment() {
-  const data = await request(`/api/equipamentos?tab=${encodeURIComponent(state.tab)}`);
-  state.items = data.itens || [];
+function bustTabCache() {
+  Object.keys(tabCache).forEach((key) => delete tabCache[key]);
+}
+
+function showTableLoading() {
+  const body = $("equip-body");
+  if (!body) return;
+  body.innerHTML = `<tr><td colspan="10" class="empty">Carregando…</td></tr>`;
+}
+
+function paintTab(tab, items, estoque) {
+  if (state.tab !== tab) return;
+  state.items = items || [];
+  if (estoque) state.estoque = estoque;
   closeFilterMenus();
-  const items = visibleItems(state.items);
-  renderStats(items);
+  if (isGestao()) {
+    renderStats(state.items);
+    renderHead();
+    renderRows(state.items);
+    return;
+  }
+  const visible = visibleItems(state.items);
+  renderStats(visible);
   renderHead();
-  renderRows(items);
+  renderRows(visible);
+}
+
+async function loadEquipment() {
+  bustTabCache();
+  await loadTab({ force: true });
 }
 
 async function loadReports() {
-  const data = await request(`/api/relatorios?tab=${encodeURIComponent(state.tab)}`);
-  state.items = data.itens || [];
-  state.estoque = data.estoque || state.estoque;
-  state.modelFilter = "";
-  state.statusFilter = "";
-  closeFilterMenus();
-  renderStats(state.items);
-  renderHead();
-  renderRows(state.items);
+  bustTabCache();
+  await loadTab({ force: true });
 }
 
-async function loadTab() {
-  if (isGestao()) {
-    await loadReports();
-    return;
+async function loadTab(options = {}) {
+  const tab = state.tab;
+  const force = Boolean(options.force);
+  const cached = tabCache[tab];
+  if (cached && !force) {
+    paintTab(tab, cached.items, cached.estoque);
+  } else if (!cached && !force) {
+    showTableLoading();
   }
-  await loadEquipment();
+
+  if (tabAbort) tabAbort.abort();
+  tabAbort = new AbortController();
+  const signal = tabAbort.signal;
+  const gen = ++loadGen;
+  try {
+    const data = isGestao()
+      ? await request(`/api/relatorios?tab=${encodeURIComponent(tab)}`, { signal })
+      : await request(`/api/equipamentos?tab=${encodeURIComponent(tab)}`, { signal });
+    if (gen !== loadGen || state.tab !== tab) return;
+    const items = data.itens || [];
+    const estoque = data.estoque || cached?.estoque;
+    tabCache[tab] = { items, estoque };
+    paintTab(tab, items, estoque);
+  } catch (err) {
+    if (err && err.name === "AbortError") return;
+    throw err;
+  }
 }
 
 function syncAddButton() {
@@ -661,6 +700,12 @@ function openReturnModal() {
   pick.value = String(reports[0].id);
   fillReturnForm(reports[0]);
   $("report-return-modal").classList.add("open");
+  ensureReportDetails(reports[0]).then((full) => {
+    if (full && $("rd-id").value === String(full.id)) fillReturnForm(full);
+  }).catch((err) => {
+    if (err && err.name === "AbortError") return;
+    showToast("✘ " + err.message);
+  });
 }
 
 function openReportKindModal() {
@@ -891,6 +936,23 @@ function setDetailsTab(filter) {
   renderDetailsList();
 }
 
+async function ensureReportDetails(item) {
+  if (!item) return item;
+  if (item.details_loaded) return item;
+  const data = await request(`/api/relatorios/${item.id}`);
+  const full = { ...(data.item || item), details_loaded: true };
+  const idx = (state.items || []).findIndex((row) => row.id === item.id);
+  if (idx >= 0) {
+    state.items[idx] = { ...state.items[idx], ...full };
+  }
+  const cached = tabCache[state.tab];
+  if (cached && Array.isArray(cached.items)) {
+    const cachedIdx = cached.items.findIndex((row) => row.id === item.id);
+    if (cachedIdx >= 0) cached.items[cachedIdx] = { ...cached.items[cachedIdx], ...full };
+  }
+  return idx >= 0 ? state.items[idx] : full;
+}
+
 function openDetailsModal(item) {
   state.detailsItem = item;
   state.detailsFilter = "";
@@ -899,6 +961,17 @@ function openDetailsModal(item) {
   });
   renderDetailsList();
   $("report-details-modal").classList.add("open");
+  ensureReportDetails(item)
+    .then((full) => {
+      if (state.detailsItem && full && state.detailsItem.id === full.id) {
+        state.detailsItem = full;
+        renderDetailsList();
+      }
+    })
+    .catch((err) => {
+      if (err && err.name === "AbortError") return;
+      showToast("✘ " + err.message);
+    });
 }
 
 function closeDetailsModal() {
@@ -1153,6 +1226,8 @@ async function saveStock(event) {
       body: JSON.stringify({ itens }),
     });
     renderStockAdmin(data);
+    bustTabCache();
+    state.estoque = data;
     showToast("✔ Estoque atualizado");
   } catch (err) {
     showToast("✘ " + err.message);
@@ -1246,14 +1321,20 @@ function showView(tab) {
       jobs.push(loadUsers(), loadBlocks());
     }
     if (window.PROATI.canManageStock) jobs.push(loadStock());
-    Promise.all(jobs).catch((err) => showToast("✘ " + err.message));
+    Promise.all(jobs).catch((err) => {
+      if (err && err.name === "AbortError") return;
+      showToast("✘ " + err.message);
+    });
     return;
   }
   $("tab-label").textContent = currentMeta().label.toUpperCase();
   state.modelFilter = "";
   state.statusFilter = "";
   syncAddButton();
-  loadTab().catch((err) => showToast("✘ " + err.message));
+  loadTab().catch((err) => {
+    if (err && err.name === "AbortError") return;
+    showToast("✘ " + err.message);
+  });
 }
 
 document.querySelectorAll(".nav-tab").forEach((btn) => {
@@ -1393,6 +1474,13 @@ $("report-return-form").addEventListener("submit", saveReturnReport);
 $("rd-pick").addEventListener("change", () => {
   const item = returnableReports().find((row) => String(row.id) === String($("rd-pick").value));
   fillReturnForm(item);
+  if (!item) return;
+  ensureReportDetails(item).then((full) => {
+    if (full && $("rd-id").value === String(full.id)) fillReturnForm(full);
+  }).catch((err) => {
+    if (err && err.name === "AbortError") return;
+    showToast("✘ " + err.message);
+  });
 });
 
 $("report-alter-close").addEventListener("click", closeAlterModal);

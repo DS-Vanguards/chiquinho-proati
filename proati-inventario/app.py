@@ -21,7 +21,8 @@ from flask_login import (
     logout_user,
 )
 from flask_wtf.csrf import CSRFError, CSRFProtect, generate_csrf
-from sqlalchemy import func
+from sqlalchemy import event, func
+from sqlalchemy.engine import Engine
 from sqlalchemy.exc import IntegrityError
 
 import config
@@ -48,8 +49,10 @@ from models import (
     init_default_data,
     match_gestao_modelo,
     maintenance_stock_key,
-    purge_expired_relatorios,
     gestao_stock_specs,
+    invalidate_stock_cache,
+    maybe_purge_expired_relatorios,
+    relatorio_movement_counts,
     stock_snapshot,
     stock_unavailable_error,
 )
@@ -73,10 +76,31 @@ login_manager = LoginManager(app)
 login_manager.login_view = "login"
 login_manager.login_message = "Faça login para continuar."
 login_manager.login_message_category = "error"
+app.config.setdefault("SEND_FILE_MAX_AGE_DEFAULT", 120)
+
+
+@event.listens_for(Engine, "connect")
+def _sqlite_fast_pragmas(dbapi_connection, _connection_record):
+    module = (type(dbapi_connection).__module__ or "").lower()
+    name = type(dbapi_connection).__name__.lower()
+    if "sqlite" not in module and "sqlite" not in name:
+        return
+    cursor = dbapi_connection.cursor()
+    cursor.execute("PRAGMA journal_mode=WAL")
+    cursor.execute("PRAGMA synchronous=NORMAL")
+    cursor.close()
+
+
+def _should_migrate_schema() -> bool:
+    if os.environ.get("RUN_DB_MIGRATE", "").lower() in ("1", "true", "yes"):
+        return True
+    return not os.environ.get("VERCEL")
+
 
 with app.app_context():
-    db.create_all()
-    ensure_schema()
+    if _should_migrate_schema():
+        db.create_all()
+        ensure_schema()
     init_default_data()
 
 
@@ -392,7 +416,12 @@ def inject_globals():
 
 @app.after_request
 def set_security_headers(response):
-    return add_security_headers(response)
+    response = add_security_headers(response)
+    if request.path.startswith("/static/"):
+        response.headers["Cache-Control"] = (
+            "public, max-age=120, stale-while-revalidate=86400"
+        )
+    return response
 
 
 @app.route("/")
@@ -663,6 +692,7 @@ def api_create_equipment():
     except IntegrityError:
         db.session.rollback()
         return jsonify({"erro": "Serial já cadastrado nesta aba ou numeração já usada neste modelo."}), 400
+    invalidate_stock_cache()
     return jsonify({"item": item.to_dict()}), 201
 
 
@@ -701,6 +731,7 @@ def api_update_equipment(item_id):
     except IntegrityError:
         db.session.rollback()
         return jsonify({"erro": "Serial já cadastrado nesta aba ou numeração já usada neste modelo."}), 400
+    invalidate_stock_cache()
     return jsonify({"item": item.to_dict()})
 
 
@@ -715,6 +746,7 @@ def api_delete_equipment(item_id):
         return denied
     db.session.delete(item)
     db.session.commit()
+    invalidate_stock_cache()
     return jsonify({"ok": True})
 
 
@@ -737,14 +769,21 @@ def api_list_reports():
     denied = deny_tab(tab)
     if denied:
         return denied
-    purge_expired_relatorios()
     items = (
         Relatorio.query.filter_by(tab=tab)
         .order_by(Relatorio.created_at.desc(), Relatorio.id.desc())
         .all()
     )
+    counts = relatorio_movement_counts([item.id for item in items])
     return jsonify({
-        "itens": [item.to_dict(viewer=current_user) for item in items],
+        "itens": [
+            item.to_dict(
+                viewer=current_user,
+                include_movimentos=False,
+                movement_counts=counts.get(item.id),
+            )
+            for item in items
+        ],
         "estoque": stock_snapshot(),
     })
 
@@ -778,7 +817,7 @@ def api_create_report():
     if professor_error:
         return jsonify({"erro": professor_error}), 400
 
-    purge_expired_relatorios()
+    maybe_purge_expired_relatorios()
     item = Relatorio(
         tab=tab,
         modelos=modelo,
@@ -799,6 +838,7 @@ def api_create_report():
         detalhe=f"Sala {sala}",
     )
     db.session.commit()
+    invalidate_stock_cache()
     return jsonify({"item": item.to_dict(viewer=current_user)}), 201
 
 
@@ -860,6 +900,7 @@ def api_alter_report(item_id):
         detalhe=f"Quantidade atual: {item.quantidade_atual}",
     )
     db.session.commit()
+    invalidate_stock_cache()
     return jsonify({"item": item.to_dict(viewer=current_user)})
 
 
@@ -894,7 +935,17 @@ def api_return_report(item_id):
         detalhe=detalhe,
     )
     db.session.commit()
+    invalidate_stock_cache()
     return jsonify({"item": item.to_dict(viewer=current_user)})
+
+
+@app.route("/api/relatorios/<int:item_id>")
+@inventory_required
+def api_get_report(item_id):
+    item, error = load_relatorio_or_error(item_id)
+    if error:
+        return error
+    return jsonify({"item": item.to_dict(viewer=current_user, include_movimentos=True)})
 
 
 @app.route("/api/relatorios/<int:item_id>", methods=["DELETE"])
@@ -908,6 +959,7 @@ def api_delete_report(item_id):
         return denied
     db.session.delete(item)
     db.session.commit()
+    invalidate_stock_cache()
     return jsonify({"ok": True})
 
 
@@ -943,6 +995,7 @@ def api_save_stock():
         else:
             db.session.add(SchoolStock(pool=pool, modelo=modelo, quantidade=quantidade))
     db.session.commit()
+    invalidate_stock_cache()
     return jsonify(stock_snapshot())
 
 
@@ -1126,4 +1179,5 @@ if __name__ == "__main__":
         debug=os.environ.get("FLASK_DEBUG", "").lower() in ("1", "true", "yes"),
         host="127.0.0.1",
         port=5000,
+        threaded=True,
     )
