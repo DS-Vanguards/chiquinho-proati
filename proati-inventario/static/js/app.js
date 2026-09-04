@@ -24,8 +24,8 @@ const state = {
 };
 
 const tabCache = Object.create(null);
-let loadGen = 0;
-let tabAbort = null;
+const inflightTabs = Object.create(null);
+let estoquePromise = null;
 
 function $(id) {
   return document.getElementById(id);
@@ -455,10 +455,13 @@ function bustTabCache() {
   Object.keys(tabCache).forEach((key) => delete tabCache[key]);
 }
 
-function showTableLoading() {
-  const body = $("equip-body");
-  if (!body) return;
-  body.innerHTML = `<tr><td colspan="10" class="empty">Carregando…</td></tr>`;
+function navTabIds() {
+  return [
+    ...document.querySelectorAll(".nav-tab[data-tab]"),
+    ...document.querySelectorAll(".nav-more-row[data-tab]"),
+  ]
+    .map((el) => el.dataset.tab)
+    .filter(Boolean);
 }
 
 function paintTab(tab, items, estoque) {
@@ -478,43 +481,80 @@ function paintTab(tab, items, estoque) {
   renderRows(visible);
 }
 
+function refreshEstoque() {
+  estoquePromise = request("/api/estoque")
+    .then((data) => {
+      state.estoque = data;
+      return data;
+    })
+    .finally(() => {
+      estoquePromise = null;
+    });
+  return estoquePromise;
+}
+
+function loadEstoque() {
+  if (state.estoque) return Promise.resolve(state.estoque);
+  if (estoquePromise) return estoquePromise;
+  return refreshEstoque();
+}
+
+function fetchTab(tab, force = false) {
+  if (!force && inflightTabs[tab]) return inflightTabs[tab];
+  const kind = (TABS[tab] || {}).kind;
+  const pending = (async () => {
+    const data =
+      kind === "gestao"
+        ? await request(`/api/relatorios?tab=${encodeURIComponent(tab)}`)
+        : await request(`/api/equipamentos?tab=${encodeURIComponent(tab)}`);
+    const items = data.itens || [];
+    tabCache[tab] = { items };
+    if (state.tab === tab) paintTab(tab, items, state.estoque);
+    return items;
+  })().finally(() => {
+    if (inflightTabs[tab] === pending) delete inflightTabs[tab];
+  });
+  inflightTabs[tab] = pending;
+  return pending;
+}
+
+function prefetchNearby(tab) {
+  if ((TABS[tab] || {}).kind !== "gestao") return;
+  navTabIds().forEach((other) => {
+    if (other === tab || (TABS[other] || {}).kind !== "gestao") return;
+    if (tabCache[other] || inflightTabs[other]) return;
+    fetchTab(other).catch(() => {});
+  });
+}
+
 async function loadEquipment() {
   bustTabCache();
-  await loadTab({ force: true });
+  await Promise.all([fetchTab(state.tab, true), refreshEstoque().catch(() => null)]);
+  paintTab(state.tab, tabCache[state.tab]?.items || [], state.estoque);
 }
 
 async function loadReports() {
   bustTabCache();
-  await loadTab({ force: true });
+  await Promise.all([fetchTab(state.tab, true), refreshEstoque().catch(() => null)]);
+  paintTab(state.tab, tabCache[state.tab]?.items || [], state.estoque);
 }
 
-async function loadTab(options = {}) {
+async function loadTab() {
   const tab = state.tab;
-  const force = Boolean(options.force);
   const cached = tabCache[tab];
-  if (cached && !force) {
-    paintTab(tab, cached.items, cached.estoque);
-  } else if (!cached && !force) {
-    showTableLoading();
+  paintTab(tab, cached ? cached.items : [], state.estoque);
+  if ((TABS[tab] || {}).kind === "gestao") {
+    loadEstoque()
+      .then(() => {
+        if (state.tab === tab) {
+          paintTab(tab, tabCache[tab]?.items || cached?.items || [], state.estoque);
+        }
+      })
+      .catch(() => {});
+    prefetchNearby(tab);
   }
-
-  if (tabAbort) tabAbort.abort();
-  tabAbort = new AbortController();
-  const signal = tabAbort.signal;
-  const gen = ++loadGen;
-  try {
-    const data = isGestao()
-      ? await request(`/api/relatorios?tab=${encodeURIComponent(tab)}`, { signal })
-      : await request(`/api/equipamentos?tab=${encodeURIComponent(tab)}`, { signal });
-    if (gen !== loadGen || state.tab !== tab) return;
-    const items = data.itens || [];
-    const estoque = data.estoque || cached?.estoque;
-    tabCache[tab] = { items, estoque };
-    paintTab(tab, items, estoque);
-  } catch (err) {
-    if (err && err.name === "AbortError") return;
-    throw err;
-  }
+  if (cached) return;
+  await fetchTab(tab);
 }
 
 function syncAddButton() {

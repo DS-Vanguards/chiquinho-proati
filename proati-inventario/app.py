@@ -784,7 +784,6 @@ def api_list_reports():
             )
             for item in items
         ],
-        "estoque": stock_snapshot(),
     })
 
 
