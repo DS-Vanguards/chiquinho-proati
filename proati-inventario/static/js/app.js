@@ -392,7 +392,7 @@ function renderRows(items) {
         const entregues = item.entregues ?? (item.movimentos || []).filter((move) => move.tipo === "Entregue").length;
         const transferencias = item.transferencias ?? (item.movimentos || []).filter((move) => move.tipo === "Transferido").length;
         return `<tr>
-          <td class="td-num"><span class="num-badge">${idx + 1}</span></td>
+          <td class="td-num"><span class="num-badge">${escapeHtml(item.numero || idx + 1)}</span></td>
           <td class="td-tab">${escapeHtml(item.modelos)}</td>
           <td>${escapeHtml(item.quantidade)}</td>
           <td>${escapeHtml(item.quantidade_atual)}</td>
@@ -846,28 +846,50 @@ async function saveReturnReport(event) {
 }
 
 function isTransferLike(tipo) {
-  return tipo === "Transferido" || tipo === "Coletado transferência";
+  return tipo === "Transferido";
+}
+
+function reportModelo(item) {
+  return String(item?.modelos || "").trim().toLowerCase();
+}
+
+function transferTargets(item) {
+  return (state.items || [])
+    .map((row, idx) => ({ ...row, numero: row.numero || idx + 1 }))
+    .filter(
+      (row) =>
+        row.id !== item.id &&
+        row.status === "Em uso" &&
+        reportModelo(row) === reportModelo(item)
+    );
+}
+
+function fillDestinoOptions(item) {
+  const select = $("ra-destino");
+  if (!select) return;
+  const targets = item ? transferTargets(item) : [];
+  select.innerHTML =
+    `<option value="">Selecione o # da tabela</option>` +
+    targets
+      .map(
+        (row) =>
+          `<option value="${row.id}" data-numero="${row.numero}">#${row.numero} · ${escapeHtml(row.modelos)} · ${escapeHtml(row.professor)} · sala ${escapeHtml(row.sala)}</option>`
+      )
+      .join("");
+  select.required = Boolean(item) && isTransferLike($("ra-tipo").value);
 }
 
 function syncTransferFields() {
   const tipo = $("ra-tipo").value;
   const show = isTransferLike(tipo);
-  const coletado = tipo === "Coletado transferência";
-  $("wrap-destinatario").hidden = !show;
-  $("wrap-sala-destino").hidden = !show;
-  $("ra-destinatario").required = show;
-  $("ra-sala-destino").required = show;
-  $("ra-person-label").textContent = coletado ? "Remetente" : "Destinatário";
-  $("ra-quantidade").placeholder = coletado ? "Quantidade a somar" : "Quantidade a baixar";
+  const wrap = $("wrap-destino-relatorio");
+  if (wrap) wrap.hidden = !show;
   const item = state.items.find((row) => String(row.id) === String($("ra-id").value));
+  fillDestinoOptions(show ? item : null);
+  $("ra-quantidade").placeholder = show ? "Quantidade a transferir" : "Quantidade a baixar";
   if (item) {
     const atual = Number(item.quantidade_atual) || 0;
-    const inicial = Number(item.quantidade) || 0;
-    $("ra-quantidade").max = coletado ? Math.max(inicial - atual, 1) : Math.max(atual, 1);
-  }
-  if (!show) {
-    $("ra-destinatario").value = "";
-    $("ra-sala-destino").value = "";
+    $("ra-quantidade").max = Math.max(atual, 1);
   }
 }
 
@@ -875,8 +897,7 @@ function openAlterModal(item) {
   $("ra-id").value = item.id;
   $("ra-quantidade").value = "";
   $("ra-tipo").value = "Entregue";
-  $("ra-destinatario").value = "";
-  $("ra-sala-destino").value = "";
+  fillDestinoOptions(item);
   syncTransferFields();
   $("report-alter-modal").classList.add("open");
 }
@@ -894,10 +915,10 @@ async function saveAlterReport(event) {
     tipo,
   };
   if (isTransferLike(tipo)) {
-    const pessoa = $("ra-destinatario").value.trim();
-    payload.sala_destino = $("ra-sala-destino").value.trim();
-    if (tipo === "Coletado transferência") payload.remetente = pessoa;
-    else payload.destinatario = pessoa;
+    const dest = $("ra-destino");
+    const option = dest?.selectedOptions?.[0];
+    payload.destino_id = dest?.value || "";
+    payload.destino_numero = option?.dataset.numero || "";
   }
   try {
     await request(`/api/relatorios/${id}/alterar`, {
@@ -952,20 +973,55 @@ function renderDetailsList() {
         );
       }
       if (move.destinatario && move.tipo !== "Devolução") {
-        const personLabel = move.tipo === "Coletado transferência" ? "Remetente" : "Destinatário";
+        const personLabel = move.origem_relatorio_id ? "De" : "Para";
         extra.push(`${personLabel}: ${escapeHtml(move.destinatario)}`);
       }
-      if (move.sala_destino) extra.push(`Sala de destino: ${escapeHtml(move.sala_destino)}`);
+      if (move.sala_destino) extra.push(`Sala: ${escapeHtml(move.sala_destino)}`);
+      if (move.status === "pendente") extra.push("Status: aguardando aceite");
+      if (move.status === "aceito") extra.push("Status: aceito");
+      if (move.status === "negado") extra.push("Status: negado");
       if (move.detalhe) extra.push(escapeHtml(move.detalhe));
-      const title = move.tipo === "Devolução" ? "Entrega" : move.tipo;
+      let title = move.tipo === "Devolução" ? "Entrega" : move.tipo;
+      if (move.tipo === "Transferido" && move.origem_relatorio_id) title = "Transferência recebida";
+      else if (move.tipo === "Transferido" && move.status === "pendente") title = "Transferido (aguardando)";
+      else if (move.tipo === "Transferido" && move.status === "aceito") title = "Transferência aceita";
+      else if (move.tipo === "Transferido" && move.status === "negado") title = "Transferência negada";
+      const actions = move.can_decidir
+        ? `<div class="history-actions">
+            <button class="btn-sm btn-ok" type="button" data-transfer-accept="${move.id}">Aceitar</button>
+            <button class="btn-sm btn-danger" type="button" data-transfer-deny="${move.id}">Negar</button>
+          </div>`
+        : "";
       return `<div class="history-item">
         <div class="history-when">${escapeHtml(move.quando)}</div>
         <div class="history-title">${escapeHtml(title)}</div>
         <div class="history-meta">Conta: ${escapeHtml(move.usuario)}${move.cargo ? " · " + escapeHtml(move.cargo) : ""}</div>
         ${extra.length ? `<div class="history-meta">${extra.join("<br>")}</div>` : ""}
+        ${actions}
       </div>`;
     })
     .join("");
+}
+
+async function decideTransfer(moveId, acao) {
+  const item = state.detailsItem;
+  if (!item || !moveId) return;
+  const label = acao === "aceitar" ? "aceitar" : "negar";
+  if (!confirm(`Deseja ${label} esta transferência?`)) return;
+  try {
+    const data = await request(`/api/relatorios/${item.id}/transferencias/${moveId}/${acao}`, {
+      method: "POST",
+      body: JSON.stringify({}),
+    });
+    showToast("✔ " + (data.mensagem || "Transferência atualizada"));
+    if (data.item) {
+      state.detailsItem = { ...data.item, details_loaded: true };
+      renderDetailsList();
+    }
+    await loadReports();
+  } catch (err) {
+    showToast("✘ " + err.message);
+  }
 }
 
 function setDetailsTab(filter) {
@@ -1539,6 +1595,12 @@ $("report-details-modal").addEventListener("click", (e) => {
 $("report-details-tabs").addEventListener("click", (e) => {
   const tab = e.target.closest("[data-details-tab]");
   if (tab) setDetailsTab(tab.dataset.detailsTab);
+});
+$("report-details-list").addEventListener("click", (e) => {
+  const acceptBtn = e.target.closest("[data-transfer-accept]");
+  const denyBtn = e.target.closest("[data-transfer-deny]");
+  if (acceptBtn) decideTransfer(acceptBtn.dataset.transferAccept, "aceitar");
+  if (denyBtn) decideTransfer(denyBtn.dataset.transferDeny, "negar");
 });
 
 const usersBody = $("users-body");

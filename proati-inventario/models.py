@@ -200,7 +200,11 @@ class Relatorio(db.Model):
     def to_dict(self, *, viewer=None, include_movimentos=True, movement_counts=None) -> dict:
         mine = bool(viewer and self.professor_id == viewer.id)
         can_write = bool(viewer and viewer.can_write_reports())
-        can_alter = mine and can_write and self.status == "Em uso"
+        can_alter = (
+            can_write
+            and self.status == "Em uso"
+            and (mine or bool(viewer and viewer.can_close_other_reports()))
+        )
         can_return = (
             can_write
             and self.status == "Em uso"
@@ -209,10 +213,18 @@ class Relatorio(db.Model):
         can_delete = bool(viewer and viewer.can_manage_users())
         movimentos = []
         if include_movimentos:
-            movimentos = [
-                movimento.to_dict()
-                for movimento in sorted(self.movimentos, key=lambda row: row.created_at or datetime.utcnow())
-            ]
+            can_decidir = can_write and self.status == "Em uso" and (
+                mine or bool(viewer and viewer.can_close_other_reports())
+            )
+            movimentos = []
+            for movimento in sorted(self.movimentos, key=lambda row: row.created_at or datetime.utcnow()):
+                payload_move = movimento.to_dict()
+                payload_move["can_decidir"] = bool(
+                    can_decidir
+                    and payload_move.get("status") == "pendente"
+                    and payload_move.get("origem_relatorio_id")
+                )
+                movimentos.append(payload_move)
             entregues = sum(1 for move in movimentos if move["tipo"] == "Entregue")
             transferencias = sum(1 for move in movimentos if move["tipo"] == "Transferido")
         else:
@@ -263,6 +275,10 @@ class RelatorioMovimento(db.Model):
     usuario_nome = db.Column(db.String(80), nullable=False)
     usuario_cargo = db.Column(db.String(40), nullable=False, default="")
     detalhe = db.Column(db.String(240), nullable=True)
+    status = db.Column(db.String(20), nullable=True)
+    destino_relatorio_id = db.Column(db.Integer, nullable=True, index=True)
+    origem_relatorio_id = db.Column(db.Integer, nullable=True, index=True)
+    origem_movimento_id = db.Column(db.Integer, nullable=True)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
     relatorio = db.relationship(
@@ -286,6 +302,10 @@ class RelatorioMovimento(db.Model):
             "usuario": self.usuario_nome,
             "cargo": self.usuario_cargo or "",
             "detalhe": self.detalhe or "",
+            "status": self.status or "",
+            "destino_relatorio_id": self.destino_relatorio_id,
+            "origem_relatorio_id": self.origem_relatorio_id,
+            "origem_movimento_id": self.origem_movimento_id,
             "quando": when.strftime("%d/%m/%Y %H:%M") if when else "",
         }
 
@@ -339,15 +359,7 @@ def maintenance_stock_key(tab: str, modelo: str):
 def report_units_out(relatorio, entregue_map=None) -> int:
     if relatorio.status == "Entregues":
         return 0
-    if entregue_map is not None:
-        entregue = int(entregue_map.get(relatorio.id) or 0)
-    else:
-        entregue = sum(
-            int(move.quantidade or 0)
-            for move in (relatorio.movimentos or [])
-            if move.tipo == "Entregue"
-        )
-    return max(0, int(relatorio.quantidade or 0) - entregue)
+    return max(0, int(getattr(relatorio, "quantidade_atual", None) or 0))
 
 
 _stock_cache = {"at": 0.0, "data": None}
@@ -405,21 +417,12 @@ def stock_snapshot(*, ignore_equipment_id=None, ignore_relatorio_id=None):
             continue
         maintenance_used[key] = maintenance_used.get(key, 0) + int(total)
 
-    entregue_map = dict(
-        db.session.query(
-            RelatorioMovimento.relatorio_id,
-            func.coalesce(func.sum(RelatorioMovimento.quantidade), 0),
-        )
-        .filter(RelatorioMovimento.tipo == "Entregue")
-        .group_by(RelatorioMovimento.relatorio_id)
-        .all()
-    )
     reports_used = {}
     report_query = db.session.query(
         Relatorio.id,
         Relatorio.tab,
         Relatorio.modelos,
-        Relatorio.quantidade,
+        Relatorio.quantidade_atual,
         Relatorio.status,
     ).filter(Relatorio.status != "Entregues")
     if ignore_relatorio_id:
@@ -429,7 +432,30 @@ def stock_snapshot(*, ignore_equipment_id=None, ignore_relatorio_id=None):
         if not modelo:
             continue
         key = (report.tab, modelo)
-        reports_used[key] = reports_used.get(key, 0) + report_units_out(report, entregue_map)
+        reports_used[key] = reports_used.get(key, 0) + report_units_out(report)
+
+    pending_query = (
+        db.session.query(
+            Relatorio.tab,
+            Relatorio.modelos,
+            func.coalesce(func.sum(RelatorioMovimento.quantidade), 0),
+        )
+        .join(Relatorio, Relatorio.id == RelatorioMovimento.relatorio_id)
+        .filter(
+            RelatorioMovimento.tipo == "Transferido",
+            RelatorioMovimento.status == "pendente",
+            RelatorioMovimento.destino_relatorio_id.isnot(None),
+            RelatorioMovimento.origem_relatorio_id.is_(None),
+        )
+    )
+    if ignore_relatorio_id:
+        pending_query = pending_query.filter(Relatorio.id != ignore_relatorio_id)
+    for tab, modelos, total in pending_query.group_by(Relatorio.tab, Relatorio.modelos):
+        modelo = match_gestao_modelo(tab, modelos)
+        if not modelo:
+            continue
+        key = (tab, modelo)
+        reports_used[key] = reports_used.get(key, 0) + int(total or 0)
 
     itens = []
     total = 0
@@ -568,6 +594,27 @@ def ensure_schema():
         if "remetente" not in relatorio_cols:
             db.session.execute(text("ALTER TABLE relatorios ADD COLUMN remetente VARCHAR(120)"))
             db.session.commit()
+    ensure_transfer_schema()
+
+
+def ensure_transfer_schema():
+    inspector = inspect(db.engine)
+    if "relatorio_movimentos" not in inspector.get_table_names():
+        return
+    cols = {column["name"] for column in inspector.get_columns("relatorio_movimentos")}
+    added = False
+    for name, ddl in (
+        ("status", "VARCHAR(20)"),
+        ("destino_relatorio_id", "INTEGER"),
+        ("origem_relatorio_id", "INTEGER"),
+        ("origem_movimento_id", "INTEGER"),
+    ):
+        if name in cols:
+            continue
+        db.session.execute(text(f"ALTER TABLE relatorio_movimentos ADD COLUMN {name} {ddl}"))
+        added = True
+    if added:
+        db.session.commit()
 
 
 def _constraint_names(table: str) -> set:

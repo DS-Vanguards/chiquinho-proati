@@ -46,6 +46,7 @@ from models import (
     SchoolStock,
     User,
     ensure_schema,
+    ensure_transfer_schema,
     init_default_data,
     match_gestao_modelo,
     maintenance_stock_key,
@@ -101,6 +102,8 @@ with app.app_context():
     if _should_migrate_schema():
         db.create_all()
         ensure_schema()
+    else:
+        ensure_transfer_schema()
     init_default_data()
 
 
@@ -264,6 +267,35 @@ def deny_report_write():
     return None
 
 
+def ordered_reports(tab):
+    return (
+        Relatorio.query.filter_by(tab=tab)
+        .order_by(Relatorio.created_at.desc(), Relatorio.id.desc())
+        .all()
+    )
+
+
+def resolve_transfer_destination(source, data):
+    dest_id = parse_positive_int(data.get("destino_id"))
+    dest_numero = parse_positive_int(data.get("destino_numero"))
+    dest = db.session.get(Relatorio, dest_id) if dest_id else None
+    if dest and dest.tab != source.tab:
+        dest = None
+    if dest is None and dest_numero:
+        items = ordered_reports(source.tab)
+        if 1 <= dest_numero <= len(items):
+            dest = items[dest_numero - 1]
+    if not dest or dest.id == source.id:
+        return None, "Informe o nº de outro relatório desta aba."
+    if dest.status != "Em uso":
+        return None, "O relatório de destino precisa estar em uso."
+    source_modelo = match_gestao_modelo(source.tab, source.modelos)
+    dest_modelo = match_gestao_modelo(dest.tab, dest.modelos)
+    if not source_modelo or source_modelo != dest_modelo:
+        return None, "O relatório de destino precisa ser do mesmo modelo."
+    return dest, None
+
+
 def resolve_report_professor(data):
     if not current_user.is_vgs_owner:
         return current_user.id, current_user.username, None
@@ -286,20 +318,29 @@ def log_relatorio_movimento(
     destinatario="",
     sala_destino="",
     detalhe="",
+    status=None,
+    destino_relatorio_id=None,
+    origem_relatorio_id=None,
+    origem_movimento_id=None,
 ):
-    db.session.add(
-        RelatorioMovimento(
-            relatorio_id=item.id,
-            tipo=tipo,
-            quantidade=quantidade,
-            destinatario=destinatario or None,
-            sala_destino=sala_destino or None,
-            usuario_id=current_user.id,
-            usuario_nome=current_user.username,
-            usuario_cargo=current_user.role_label,
-            detalhe=detalhe or None,
-        )
+    row = RelatorioMovimento(
+        relatorio_id=item.id,
+        tipo=tipo,
+        quantidade=quantidade,
+        destinatario=destinatario or None,
+        sala_destino=sala_destino or None,
+        usuario_id=current_user.id,
+        usuario_nome=current_user.username,
+        usuario_cargo=current_user.role_label,
+        detalhe=detalhe or None,
+        status=status,
+        destino_relatorio_id=destino_relatorio_id,
+        origem_relatorio_id=origem_relatorio_id,
+        origem_movimento_id=origem_movimento_id,
     )
+    db.session.add(row)
+    db.session.flush()
+    return row
 
 
 def deny_tab(tab: str):
@@ -769,20 +810,19 @@ def api_list_reports():
     denied = deny_tab(tab)
     if denied:
         return denied
-    items = (
-        Relatorio.query.filter_by(tab=tab)
-        .order_by(Relatorio.created_at.desc(), Relatorio.id.desc())
-        .all()
-    )
+    items = ordered_reports(tab)
     counts = relatorio_movement_counts([item.id for item in items])
     return jsonify({
         "itens": [
-            item.to_dict(
-                viewer=current_user,
-                include_movimentos=False,
-                movement_counts=counts.get(item.id),
-            )
-            for item in items
+            {
+                **item.to_dict(
+                    viewer=current_user,
+                    include_movimentos=False,
+                    movement_counts=counts.get(item.id),
+                ),
+                "numero": idx + 1,
+            }
+            for idx, item in enumerate(items)
         ],
     })
 
@@ -850,8 +890,8 @@ def api_alter_report(item_id):
     item, error = load_relatorio_or_error(item_id)
     if error:
         return error
-    if item.professor_id != current_user.id:
-        return jsonify({"erro": "Só quem criou o relatório pode alterá-lo."}), 403
+    if item.professor_id != current_user.id and not current_user.can_close_other_reports():
+        return jsonify({"erro": "Só o responsável pelo relatório pode alterá-lo."}), 403
     if item.status != "Em uso":
         return jsonify({"erro": "Este relatório já foi finalizado."}), 400
 
@@ -864,40 +904,57 @@ def api_alter_report(item_id):
         return jsonify({"erro": "Selecione uma situação válida."}), 400
 
     atual = int(item.quantidade_atual or 0)
-    inicial = int(item.quantidade or 0)
-    pessoa = (data.get("remetente") or data.get("destinatario") or "").strip()[:120]
-    sala_destino = (data.get("sala_destino") or "").strip()[:80]
-    if tipo in config.GESTAO_TRANSFER_LIKE:
-        rotulo = "remetente" if tipo == "Coletado transferência" else "destinatário"
-        if not pessoa or not sala_destino:
-            return jsonify({"erro": f"Informe o {rotulo} e a sala de destino."}), 400
+    if quantidade > atual:
+        return jsonify({"erro": "A quantidade não pode ser maior que a quantidade atual."}), 400
 
-    if tipo == "Coletado transferência":
-        if atual + quantidade > inicial:
-            return jsonify(
-                {"erro": "A quantidade coletada não pode ultrapassar a quantidade inicial."}
-            ), 400
-        item.quantidade_atual = atual + quantidade
-        item.remetente = pessoa
-        item.sala_destino = sala_destino
-    else:
-        if quantidade > atual:
-            return jsonify({"erro": "A quantidade não pode ser maior que a quantidade atual."}), 400
-        item.quantidade_atual = atual - quantidade
-        if tipo == "Transferido":
-            item.destinatario = pessoa
-            item.sala_destino = sala_destino
+    dest = None
+    dest_numero = None
+    if tipo == "Transferido":
+        dest, dest_error = resolve_transfer_destination(item, data)
+        if dest_error:
+            return jsonify({"erro": dest_error}), 400
+        dest_items = ordered_reports(item.tab)
+        dest_numero = next((idx + 1 for idx, row in enumerate(dest_items) if row.id == dest.id), None)
+
+    item.quantidade_atual = atual - quantidade
+    if tipo == "Transferido":
+        item.destinatario = dest.professor_nome
+        item.sala_destino = dest.sala
 
     item.alterado = True
     item.updated_at = datetime.utcnow()
-    log_relatorio_movimento(
+    origem_move = log_relatorio_movimento(
         item,
         tipo,
         quantidade=quantidade,
-        destinatario=pessoa,
-        sala_destino=sala_destino,
-        detalhe=f"Quantidade atual: {item.quantidade_atual}",
+        destinatario=dest.professor_nome if dest else "",
+        sala_destino=dest.sala if dest else "",
+        detalhe=(
+            f"Destino: relatório #{dest_numero} ({dest.professor_nome}). "
+            f"Quantidade atual: {item.quantidade_atual}"
+            if dest
+            else f"Quantidade atual: {item.quantidade_atual}"
+        ),
+        status="pendente" if dest else None,
+        destino_relatorio_id=dest.id if dest else None,
     )
+    if dest:
+        log_relatorio_movimento(
+            dest,
+            "Transferido",
+            quantidade=quantidade,
+            destinatario=item.professor_nome,
+            sala_destino=item.sala,
+            detalhe=(
+                f"Recebido do relatório de {item.professor_nome} "
+                f"(sala {item.sala}). Aguardando aceite."
+            ),
+            status="pendente",
+            origem_relatorio_id=item.id,
+            origem_movimento_id=origem_move.id,
+        )
+        dest.alterado = True
+        dest.updated_at = datetime.utcnow()
     db.session.commit()
     invalidate_stock_cache()
     return jsonify({"item": item.to_dict(viewer=current_user)})
@@ -918,7 +975,19 @@ def api_return_report(item_id):
         return jsonify({"erro": "Só é possível devolver os próprios relatórios."}), 403
 
     data = request.get_json(silent=True) or {}
-    ainda_com_destinatario = bool(data.get("ainda_com_destinatario")) and bool(item.destinatario)
+    has_outgoing_pending = (
+        RelatorioMovimento.query.filter_by(
+            relatorio_id=item.id,
+            tipo="Transferido",
+            status="pendente",
+        )
+        .filter(RelatorioMovimento.destino_relatorio_id.isnot(None))
+        .first()
+        is not None
+    )
+    ainda_com_destinatario = (
+        bool(data.get("ainda_com_destinatario")) and bool(item.destinatario)
+    ) or has_outgoing_pending
     quantidade_entregue = int(item.quantidade_atual or 0)
     item.status = "Pendente" if ainda_com_destinatario else "Entregues"
     item.updated_at = datetime.utcnow()
@@ -936,6 +1005,89 @@ def api_return_report(item_id):
     db.session.commit()
     invalidate_stock_cache()
     return jsonify({"item": item.to_dict(viewer=current_user)})
+
+
+@app.route("/api/relatorios/<int:item_id>/transferencias/<int:move_id>/<acao>", methods=["POST"])
+@inventory_required
+def api_decide_transfer(item_id, move_id, acao):
+    if acao not in ("aceitar", "negar"):
+        return jsonify({"erro": "Ação inválida."}), 400
+    denied_write = deny_report_write()
+    if denied_write:
+        return denied_write
+    item, error = load_relatorio_or_error(item_id)
+    if error:
+        return error
+    if item.status != "Em uso":
+        return jsonify({"erro": "Este relatório já foi finalizado."}), 400
+    if item.professor_id != current_user.id and not current_user.can_close_other_reports():
+        return jsonify({"erro": "Só o responsável pelo relatório pode aceitar ou negar."}), 403
+
+    move = RelatorioMovimento.query.filter_by(id=move_id, relatorio_id=item.id).first()
+    if (
+        not move
+        or move.tipo != "Transferido"
+        or (move.status or "") != "pendente"
+        or not move.origem_relatorio_id
+    ):
+        return jsonify({"erro": "Transferência pendente não encontrada."}), 404
+
+    quantidade = int(move.quantidade or 0)
+    origem = db.session.get(Relatorio, move.origem_relatorio_id)
+    origem_move = None
+    if move.origem_movimento_id:
+        origem_move = db.session.get(RelatorioMovimento, move.origem_movimento_id)
+    if origem_move is None and origem:
+        origem_move = (
+            RelatorioMovimento.query.filter_by(
+                relatorio_id=origem.id,
+                tipo="Transferido",
+                status="pendente",
+                destino_relatorio_id=item.id,
+            )
+            .order_by(RelatorioMovimento.id.desc())
+            .first()
+        )
+
+    if acao == "aceitar":
+        item.quantidade = int(item.quantidade or 0) + quantidade
+        item.quantidade_atual = int(item.quantidade_atual or 0) + quantidade
+        item.alterado = True
+        item.updated_at = datetime.utcnow()
+        move.status = "aceito"
+        move.detalhe = (
+            f"Aceito por {current_user.username}. "
+            f"Quantidade atual: {item.quantidade_atual}"
+        )
+        if origem_move:
+            origem_move.status = "aceito"
+            origem_move.detalhe = (
+                f"Aceito por {current_user.username}. "
+                f"Quantidade atual origem: {origem.quantidade_atual if origem else '—'}"
+            )
+        mensagem = "Transferência aceita"
+    else:
+        move.status = "negado"
+        move.detalhe = f"Negado por {current_user.username}."
+        if origem and origem.status in ("Em uso", "Pendente"):
+            origem.quantidade_atual = int(origem.quantidade_atual or 0) + quantidade
+            origem.updated_at = datetime.utcnow()
+        if origem_move:
+            origem_move.status = "negado"
+            origem_move.detalhe = f"Negado por {current_user.username}."
+            if origem and origem.status in ("Em uso", "Pendente"):
+                origem_move.detalhe += f" Quantidade atual origem: {origem.quantidade_atual}"
+            else:
+                origem_move.detalhe += " Origem já encerrada; unidades voltam ao estoque."
+        mensagem = "Transferência negada"
+
+    db.session.commit()
+    invalidate_stock_cache()
+    return jsonify({
+        "ok": True,
+        "mensagem": mensagem,
+        "item": item.to_dict(viewer=current_user, include_movimentos=True),
+    })
 
 
 @app.route("/api/relatorios/<int:item_id>")

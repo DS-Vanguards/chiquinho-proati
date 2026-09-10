@@ -609,6 +609,11 @@ table.schedule {
   color: var(--text2);
   line-height: 1.45;
 }
+.history-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 10px;
+}
 
 .resumo-wrap {
   padding: 20px 0 8px;

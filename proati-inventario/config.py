@@ -286,8 +286,8 @@ MAINTENANCE_STOCK_MAP = {
     },
 }
 GESTAO_STATUSES = ["Em uso", "Pendente", "Entregues"]
-GESTAO_MOVE_TYPES = ["Transferido", "Entregue", "Coletado transferência"]
-GESTAO_TRANSFER_LIKE = ["Transferido", "Coletado transferência"]
+GESTAO_MOVE_TYPES = ["Transferido", "Entregue"]
+GESTAO_TRANSFER_LIKE = ["Transferido"]
 RELATORIO_TTL_DAYS = 21
 
 # Metadados internos de layout

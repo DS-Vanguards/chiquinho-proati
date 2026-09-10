@@ -223,15 +223,13 @@
       <select class="form-input" id="ra-tipo" required>
         <option value="Entregue">Entregue</option>
         <option value="Transferido">Transferido</option>
-        <option value="Coletado transferência">Coletado transferência</option>
       </select>
-      <div id="wrap-destinatario" hidden>
-        <label for="ra-destinatario" id="ra-person-label">Destinatário</label>
-        <input class="form-input" id="ra-destinatario" maxlength="120" placeholder="Nome do professor">
-      </div>
-      <div id="wrap-sala-destino" hidden>
-        <label for="ra-sala-destino">Sala de destino</label>
-        <input class="form-input" id="ra-sala-destino" maxlength="80" placeholder="Ex: 15">
+      <div id="wrap-destino-relatorio" hidden>
+        <label for="ra-destino">Nº do relatório de destino</label>
+        <select class="form-input" id="ra-destino">
+          <option value="">Selecione o # da tabela</option>
+        </select>
+        <p class="admin-hint">Use o número # da lista. A quantidade entra na quantidade atual desse relatório depois que o professor responsável aceitar nos logs.</p>
       </div>
     </form>
     <div class="modal-footer">
@@ -418,5 +416,5 @@
     overflowTabs: {{ overflow_tabs | tojson }}
   };
 </script>
-<script src="{{ url_for('static', filename='js/app.js') }}?v=tabs3" defer></script>
+<script src="{{ url_for('static', filename='js/app.js') }}?v=tabs4" defer></script>
 {% endblock %}
