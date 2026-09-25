@@ -24,8 +24,11 @@ _database_url = (
 )
 
 if _database_url:
-    if _database_url.startswith("postgres://"):
-        _database_url = _database_url.replace("postgres://", "postgresql://", 1)
+    scheme, sep, rest = _database_url.partition("://")
+    if sep and rest:
+        driver = scheme.split("+", 1)[0].lower()
+        if driver in ("postgres", "postgresql") and "+" not in scheme:
+            _database_url = f"postgresql+psycopg2://{rest}"
     SQLALCHEMY_DATABASE_URI = _database_url
     SQLALCHEMY_ENGINE_OPTIONS = {
         "pool_pre_ping": True,
