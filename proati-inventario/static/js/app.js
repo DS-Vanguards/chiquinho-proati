@@ -1375,11 +1375,57 @@ function overflowTabs() {
   return window.PROATI.overflowTabs || [];
 }
 
+function isPhoneNav() {
+  return window.matchMedia("(max-width: 720px)").matches;
+}
+
+function setNavDrawer(open) {
+  const nav = $("main-nav");
+  const btn = $("nav-drawer-toggle");
+  if (!nav || !btn) return;
+  nav.classList.toggle("is-open", open);
+  btn.setAttribute("aria-expanded", open ? "true" : "false");
+  const more = $("nav-more-panel");
+  if (more) {
+    if (open && isPhoneNav()) more.hidden = false;
+    else if (!open && isPhoneNav()) more.hidden = true;
+  }
+}
+
+function closeNavDrawer() {
+  setNavDrawer(false);
+}
+
+function placeMorePanel() {
+  const panel = $("nav-more-panel");
+  const btn = $("nav-more-btn");
+  if (!panel || !btn || panel.hidden || isPhoneNav()) {
+    if (panel && !isPhoneNav()) {
+      panel.style.position = "";
+      panel.style.top = "";
+      panel.style.right = "";
+      panel.style.left = "";
+    }
+    return;
+  }
+  const rect = btn.getBoundingClientRect();
+  panel.style.position = "fixed";
+  panel.style.top = `${Math.round(rect.bottom + 6)}px`;
+  panel.style.right = `${Math.max(8, Math.round(window.innerWidth - rect.right))}px`;
+  panel.style.left = "auto";
+}
+
 function closeMoreMenu() {
   const panel = $("nav-more-panel");
   const btn = $("nav-more-btn");
-  if (panel) panel.hidden = true;
+  if (panel && !isPhoneNav()) panel.hidden = true;
   if (btn) btn.setAttribute("aria-expanded", "false");
+  if (panel && !isPhoneNav()) {
+    panel.style.position = "";
+    panel.style.top = "";
+    panel.style.right = "";
+    panel.style.left = "";
+  }
 }
 
 function toggleMoreMenu(event) {
@@ -1391,6 +1437,7 @@ function toggleMoreMenu(event) {
   const shouldOpen = panel.hidden;
   panel.hidden = !shouldOpen;
   btn.setAttribute("aria-expanded", shouldOpen ? "true" : "false");
+  if (shouldOpen) placeMorePanel();
 }
 
 function showView(tab) {
@@ -1407,6 +1454,8 @@ function showView(tab) {
     row.classList.toggle("active", row.dataset.tab === tab);
   });
   closeMoreMenu();
+  closeNavDrawer();
+  closeNavDrawer();
   const isAdminTab = tab === "admin";
   $("view-inventory").classList.toggle("active", !isAdminTab);
   const adminView = $("view-admin");
@@ -1447,6 +1496,25 @@ if (moreBtn) {
   document.addEventListener("click", (event) => {
     const wrap = $("nav-more");
     if (wrap && !wrap.contains(event.target)) closeMoreMenu();
+  });
+}
+
+const drawerBtn = $("nav-drawer-toggle");
+if (drawerBtn) {
+  drawerBtn.addEventListener("click", (event) => {
+    event.stopPropagation();
+    const nav = $("main-nav");
+    setNavDrawer(Boolean(nav) && !nav.classList.contains("is-open"));
+  });
+  document.addEventListener("click", (event) => {
+    const nav = $("main-nav");
+    if (!nav || !nav.classList.contains("is-open")) return;
+    if (nav.contains(event.target) || drawerBtn.contains(event.target)) return;
+    closeNavDrawer();
+  });
+  window.addEventListener("resize", () => {
+    placeMorePanel();
+    if (!isPhoneNav()) closeNavDrawer();
   });
 }
 
