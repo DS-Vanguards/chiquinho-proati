@@ -145,6 +145,8 @@ function canFilterStatus() {
 function visibleItems(items) {
   return items.filter((item) => {
     if (state.modelFilter && item.modelo !== state.modelFilter) return false;
+    if (state.statusFilter === "cadastrado") return Boolean(item.cadastrado);
+    if (state.statusFilter === "nao_cadastrado") return !item.cadastrado;
     if (state.statusFilter && item.status !== state.statusFilter) return false;
     return true;
   });
@@ -218,6 +220,12 @@ function openStatusFilterMenu(anchor) {
   const options = [{ value: "", label: "Todos" }].concat(
     statuses.map((status) => ({ value: status, label: status }))
   );
+  if (isTecnico()) {
+    options.push(
+      { value: "cadastrado", label: "Cadastrados" },
+      { value: "nao_cadastrado", label: "Não cadastrados" }
+    );
+  }
   fillFilterMenu(menu, options, state.statusFilter, "status-filter");
   positionFilterMenu(menu, anchor);
 }
@@ -238,6 +246,20 @@ function toggleModelFilterMenu(anchor) {
 
 function toggleStatusFilterMenu(anchor) {
   toggleFilterMenu("status-filter-menu", openStatusFilterMenu, anchor);
+}
+
+function statusFilterLabel() {
+  if (state.statusFilter === "cadastrado") return "Status: Cadastrados";
+  if (state.statusFilter === "nao_cadastrado") return "Status: Não cadastrados";
+  if (state.statusFilter) return `Status: ${state.statusFilter}`;
+  return "Status";
+}
+
+function statusCell(item) {
+  const main = `<span class="badge ${badgeClass(item.status)}">${escapeHtml(item.status)}</span>`;
+  if (!isTecnico()) return main;
+  const extra = item.cadastrado ? `<span class="badge badge-ok">Cadastrado</span>` : "";
+  return `<div class="status-stack">${main}${extra}</div>`;
 }
 
 function badgeClass(status) {
@@ -353,7 +375,7 @@ function renderHead() {
         <button class="th-filter-btn" type="button" id="model-filter-btn">${escapeHtml(modelLabel)} <span class="th-filter-caret">▾</span></button>
       </th>`
     : `<th class="th-tab">Modelo equipamento</th>`;
-  const statusLabel = state.statusFilter ? `Status: ${state.statusFilter}` : "Status";
+  const statusLabel = statusFilterLabel();
   const statusTh = canFilterStatus()
     ? `<th style="text-align:center" class="th-filter">
         <button class="th-filter-btn" type="button" id="status-filter-btn">${escapeHtml(statusLabel)} <span class="th-filter-caret">▾</span></button>
@@ -436,7 +458,7 @@ function renderRows(items) {
         <td>${escapeHtml(item.numeracao) || "—"}</td>
         ${patrimonio}
         ${maintenance ? `<td class="td-note">${escapeHtml(item.problema)}</td>` : ""}
-        ${skipStatus ? "" : `<td style="text-align:center"><span class="badge ${badgeClass(item.status)}">${escapeHtml(item.status)}</span></td>`}
+        ${skipStatus ? "" : `<td style="text-align:center">${statusCell(item)}</td>`}
         ${actions}
       </tr>`;
     })
@@ -610,6 +632,11 @@ function openModal(item) {
     (meta.kind === "maintenance" ? window.PROATI.maintenanceStatuses : window.PROATI.inventoryStatuses);
   select.innerHTML = options.map((s) => `<option value="${s}">${s}</option>`).join("");
   if (item?.status) select.value = item.status;
+  const wrapCad = $("wrap-cadastrado");
+  if (wrapCad) {
+    wrapCad.hidden = !isTecnico();
+    $("f-cadastrado").checked = Boolean(isTecnico() && item?.cadastrado);
+  }
   $("equip-modal").classList.add("open");
 }
 
@@ -641,6 +668,7 @@ async function saveEquipment(event) {
     serie_patrimonio: $("f-sem-patrimonio").checked ? "" : $("f-patrimonio").value.trim(),
     problema: $("f-problema").value.trim(),
     status: $("f-status").value,
+    cadastrado: isTecnico() && $("f-cadastrado").checked,
   };
   if (meta.fixedModel) payload.modelo = window.PROATI.tabletModel;
   try {

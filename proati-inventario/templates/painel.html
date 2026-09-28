@@ -155,6 +155,10 @@
       <div id="wrap-status">
         <label>Status</label>
         <select class="form-input" id="f-status"></select>
+        <label class="check-row" id="wrap-cadastrado" for="f-cadastrado" hidden>
+          <input type="checkbox" id="f-cadastrado">
+          <span>Cadastrado provão</span>
+        </label>
       </div>
     </form>
     <div class="modal-footer">
@@ -417,5 +421,5 @@
     overflowTabs: {{ overflow_tabs | tojson }}
   };
 </script>
-<script src="{{ url_for('static', filename='js/app.js') }}?v=rwd1" defer></script>
+<script src="{{ url_for('static', filename='js/app.js') }}?v=cad4" defer></script>
 {% endblock %}

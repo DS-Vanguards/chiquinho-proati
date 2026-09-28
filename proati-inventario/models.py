@@ -142,6 +142,7 @@ class Equipment(db.Model):
     status = db.Column(db.String(40), nullable=True)
     problema = db.Column(db.Text, nullable=True)
     serie_patrimonio = db.Column(db.String(120), nullable=True)
+    cadastrado = db.Column(db.Boolean, default=False, nullable=False)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
@@ -175,6 +176,7 @@ class Equipment(db.Model):
             "status": self.status or "",
             "problema": self.problema or "",
             "serie_patrimonio": self.serie_patrimonio or "",
+            "cadastrado": bool(self.cadastrado),
         }
 
 
@@ -588,6 +590,7 @@ def ensure_schema():
             db.session.commit()
         _migrate_equipment_numeracao_unique()
         _rename_tablet_model()
+    ensure_equipment_extra_columns()
 
     if "relatorios" in inspector.get_table_names():
         relatorio_cols = {column["name"] for column in inspector.get_columns("relatorios")}
@@ -615,6 +618,21 @@ def ensure_transfer_schema():
         added = True
     if added:
         db.session.commit()
+
+
+def ensure_equipment_extra_columns():
+    inspector = inspect(db.engine)
+    if "equipment" not in inspector.get_table_names():
+        return
+    cols = {column["name"] for column in inspector.get_columns("equipment")}
+    if "cadastrado" in cols:
+        return
+    dialect = db.engine.dialect.name
+    default = "0" if dialect == "sqlite" else "FALSE"
+    db.session.execute(
+        text(f"ALTER TABLE equipment ADD COLUMN cadastrado BOOLEAN NOT NULL DEFAULT {default}")
+    )
+    db.session.commit()
 
 
 def _constraint_names(table: str) -> set:

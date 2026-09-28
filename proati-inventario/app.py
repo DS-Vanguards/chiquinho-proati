@@ -47,6 +47,7 @@ from models import (
     User,
     ensure_schema,
     ensure_transfer_schema,
+    ensure_equipment_extra_columns,
     init_default_data,
     match_gestao_modelo,
     maintenance_stock_key,
@@ -104,6 +105,7 @@ with app.app_context():
         ensure_schema()
     else:
         ensure_transfer_schema()
+        ensure_equipment_extra_columns()
     init_default_data()
 
 
@@ -428,6 +430,7 @@ def normalize_payload(tab: str, data: dict, existing=None):
         "status": status,
         "problema": problema if is_maintenance_tab(tab) else None,
         "serie_patrimonio": serie_patrimonio,
+        "cadastrado": bool(data.get("cadastrado")) if tab == "tecnico" else False,
     }, None
 
 
@@ -767,6 +770,7 @@ def api_update_equipment(item_id):
     item.status = payload["status"]
     item.problema = payload["problema"]
     item.serie_patrimonio = payload.get("serie_patrimonio")
+    item.cadastrado = bool(payload.get("cadastrado")) if item.tab == "tecnico" else False
     try:
         db.session.commit()
     except IntegrityError:

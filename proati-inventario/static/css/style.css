@@ -555,6 +555,12 @@ table.schedule {
 }
 .btn-ok:hover { background: var(--pastel-green-bg); }
 .badge-ok { background: var(--pastel-green-bg); color: var(--pastel-green); border: 1px solid rgba(168, 230, 200, .2); }
+.status-stack {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+}
 .badge-danger { background: #1a0a0a; color: #f08080; border: 1px solid #3a1a1a; }
 .btn-save-role {
   border-color: var(--pastel-green);
@@ -774,6 +780,9 @@ table.schedule {
   opacity: .45;
   cursor: not-allowed;
   background: var(--surface3, var(--surface2));
+}
+.check-row[hidden] {
+  display: none !important;
 }
 .check-row {
   display: flex;
