@@ -127,6 +127,9 @@ function syncSkipFields() {
 }
 
 function tabModels() {
+  if (isGestao()) {
+    return ((window.PROATI.gestaoStock || {})[state.tab] || []).map((row) => row.modelo);
+  }
   return currentMeta().models || (window.PROATI.tabModels || {})[state.tab] || [];
 }
 
@@ -134,17 +137,31 @@ function tabStatuses() {
   if (!canFilterStatus()) return [];
   const mapped = (window.PROATI.tabStatuses || {})[state.tab];
   if (mapped && mapped.length) return mapped;
+  if (isGestao()) return window.PROATI.gestaoStatuses || ["Em uso", "Pendente", "Entregues"];
   if (isMaintenance()) return window.PROATI.maintenanceStatuses || [];
   return window.PROATI.inventoryStatuses || [];
 }
 
 function canFilterStatus() {
-  return ["tablets", "regular", "tecnico", "manutencao", "manutencao_tecnico"].includes(state.tab);
+  return [
+    "tablets",
+    "regular",
+    "tecnico",
+    "manutencao",
+    "manutencao_tecnico",
+    "gestao",
+    "gestao_tablet",
+    "gestao_tecnico",
+  ].includes(state.tab);
+}
+
+function itemModelo(item) {
+  return item?.modelo || item?.modelos || "";
 }
 
 function visibleItems(items) {
   return items.filter((item) => {
-    if (state.modelFilter && item.modelo !== state.modelFilter) return false;
+    if (state.modelFilter && itemModelo(item) !== state.modelFilter) return false;
     if (state.statusFilter === "cadastrado") return Boolean(item.cadastrado);
     if (state.statusFilter === "nao_cadastrado") return !item.cadastrado;
     if (state.statusFilter && item.status !== state.statusFilter) return false;
@@ -352,16 +369,22 @@ function showActionsColumn() {
 
 function renderHead() {
   if (isGestao()) {
+    const modelLabel = state.modelFilter ? `Modelo: ${state.modelFilter}` : "Modelos";
+    const statusLabel = statusFilterLabel();
     $("equip-head").innerHTML = `<tr>
       <th class="th-n">#</th>
-      <th class="th-tab">Modelos</th>
+      <th class="th-tab th-filter">
+        <button class="th-filter-btn" type="button" id="model-filter-btn">${escapeHtml(modelLabel)} <span class="th-filter-caret">▾</span></button>
+      </th>
       <th>Quantidade</th>
       <th>Quantidade atual</th>
       <th>Sala</th>
       <th>Professor</th>
       <th style="text-align:center">Entregues</th>
       <th style="text-align:center">Transferências</th>
-      <th style="text-align:center">Status</th>
+      <th style="text-align:center" class="th-filter">
+        <button class="th-filter-btn" type="button" id="status-filter-btn">${escapeHtml(statusLabel)} <span class="th-filter-caret">▾</span></button>
+      </th>
       ${showActionsColumn() ? `<th style="width:220px">Ações</th>` : ""}
     </tr>`;
     return;
@@ -491,12 +514,6 @@ function paintTab(tab, items, estoque) {
   state.items = items || [];
   if (estoque) state.estoque = estoque;
   closeFilterMenus();
-  if (isGestao()) {
-    renderStats(state.items);
-    renderHead();
-    renderRows(state.items);
-    return;
-  }
   const visible = visibleItems(state.items);
   renderStats(visible);
   renderHead();
@@ -701,17 +718,22 @@ function returnableReports() {
   return (state.items || []).filter((item) => item.status === "Em uso" && item.can_return);
 }
 
+function isOutgoingTransfer(move) {
+  return Boolean(move && move.tipo === "Transferido" && !move.origem_relatorio_id);
+}
+
 function transferInfo(item) {
   const moves = (item.movimentos || []).filter((move) => move.tipo === "Transferido");
-  if (!moves.length) {
-    if (item.destinatario) {
+  const outgoing = moves.filter((move) => isOutgoingTransfer(move) && move.status !== "negado");
+  if (!outgoing.length) {
+    if (!moves.length && item.destinatario) {
       const parts = [item.destinatario];
       if (item.sala_destino) parts.push(`sala ${item.sala_destino}`);
-      return { has: true, text: parts.join(" · "), dest: item.destinatario };
+      return { has: true, outgoing: true, text: parts.join(" · "), dest: item.destinatario };
     }
-    return { has: false, text: "", dest: "" };
+    return { has: Boolean(moves.length), outgoing: false, text: "", dest: "" };
   }
-  const text = moves
+  const text = outgoing
     .map((move) => {
       const parts = [];
       if (move.quantidade) parts.push(String(move.quantidade));
@@ -722,8 +744,8 @@ function transferInfo(item) {
       return parts.join(" · ");
     })
     .join("; ");
-  const dest = item.destinatario || moves[moves.length - 1].destinatario || "";
-  return { has: true, text, dest };
+  const dest = item.destinatario || outgoing[outgoing.length - 1].destinatario || "";
+  return { has: true, outgoing: true, text, dest };
 }
 
 function fillReturnForm(item) {
@@ -735,11 +757,12 @@ function fillReturnForm(item) {
   $("rd-professor").value = item.professor || "";
   const transfer = transferInfo(item);
   $("rd-transferidos").value = transfer.text;
-  $("wrap-transferidos").hidden = !transfer.has;
+  $("wrap-transferidos").hidden = !transfer.outgoing;
+  $("wrap-ainda-com").hidden = !transfer.outgoing;
   $("rd-ainda-com").checked = false;
   $("rd-ainda-com-label").textContent = transfer.dest
     ? `Os notebooks ainda estão com ${transfer.dest}`
-    : "Os notebooks ainda estão com o destinatário";
+    : "Os notebooks ainda estão com o outro professor";
 }
 
 function openReturnModal() {
@@ -789,9 +812,9 @@ function syncReportProfessorField() {
   const input = $("r-professor");
   const check = $("r-usar-proprio-nome");
   if (!wrap || !input || !check) return;
-  const isOwner = Boolean(window.PROATI.isVgsOwner);
-  wrap.hidden = !isOwner;
-  if (!isOwner) {
+  const canAssign = Boolean(window.PROATI.canAssignProfessor || window.PROATI.isVgsOwner);
+  wrap.hidden = !canAssign;
+  if (!canAssign) {
     input.required = false;
     input.readOnly = false;
     return;
@@ -835,7 +858,7 @@ async function saveReport(event) {
       quantidade: $("r-quantidade").value,
       sala: $("r-sala").value.trim(),
     };
-    if (window.PROATI.isVgsOwner) {
+    if (window.PROATI.canAssignProfessor || window.PROATI.isVgsOwner) {
       payload.usar_proprio_nome = Boolean($("r-usar-proprio-nome")?.checked);
       payload.professor = $("r-professor")?.value.trim() || "";
     }
@@ -862,7 +885,7 @@ async function saveReturnReport(event) {
     await request(`/api/relatorios/${id}/devolver`, {
       method: "POST",
       body: JSON.stringify({
-        ainda_com_destinatario: Boolean($("rd-ainda-com").checked && !$("wrap-transferidos").hidden),
+        ainda_com_destinatario: Boolean($("rd-ainda-com").checked && !$("wrap-ainda-com").hidden),
       }),
     });
     showToast("✔ Relatório de devolução salvo");

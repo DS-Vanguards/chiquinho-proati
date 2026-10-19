@@ -48,12 +48,15 @@ from models import (
     ensure_schema,
     ensure_transfer_schema,
     ensure_equipment_extra_columns,
+    ensure_relatorio_extra_columns,
+    has_outgoing_transfer,
     init_default_data,
     match_gestao_modelo,
     maintenance_stock_key,
     gestao_stock_specs,
     invalidate_stock_cache,
     maybe_purge_expired_relatorios,
+    outgoing_transfer_moves,
     relatorio_movement_counts,
     stock_snapshot,
     stock_unavailable_error,
@@ -106,6 +109,7 @@ with app.app_context():
     else:
         ensure_transfer_schema()
         ensure_equipment_extra_columns()
+        ensure_relatorio_extra_columns()
     init_default_data()
 
 
@@ -299,7 +303,7 @@ def resolve_transfer_destination(source, data):
 
 
 def resolve_report_professor(data):
-    if not current_user.is_vgs_owner:
+    if not current_user.can_assign_report_professor():
         return current_user.id, current_user.username, None
     if data.get("usar_proprio_nome"):
         return current_user.id, current_user.username, None
@@ -310,6 +314,35 @@ def resolve_report_professor(data):
     if other:
         return other.id, other.username, None
     return current_user.id, nome, None
+
+
+def recall_accepted_transfer(dest, quantidade):
+    take = min(max(0, int(quantidade or 0)), max(0, int(dest.quantidade_atual or 0)))
+    if take <= 0:
+        return 0
+    dest.quantidade_atual = int(dest.quantidade_atual or 0) - take
+    dest.quantidade = max(int(dest.quantidade_atual or 0), int(dest.quantidade or 0) - take)
+    dest.updated_at = datetime.utcnow()
+    return take
+
+
+def hold_transferred_units_on_close(item):
+    added = 0
+    for move in outgoing_transfer_moves(item):
+        status = (move.status or "")
+        qty = max(0, int(move.quantidade or 0))
+        if qty <= 0:
+            continue
+        if status == "pendente":
+            added += qty
+            continue
+        if status != "aceito":
+            continue
+        dest = db.session.get(Relatorio, move.destino_relatorio_id)
+        if dest and dest.status in ("Em uso", "Pendente"):
+            added += recall_accepted_transfer(dest, qty)
+    item.quantidade_atual = int(item.quantidade_atual or 0) + added
+    return added
 
 
 def log_relatorio_movimento(
@@ -683,6 +716,7 @@ def painel():
         can_manage_stock=current_user.can_manage_stock(),
         is_professor=current_user.is_teacher,
         is_vgs_owner=current_user.is_vgs_owner,
+        can_assign_professor=current_user.can_assign_report_professor(),
         user_id=current_user.id,
         username=current_user.username,
         main_tabs=main_tabs,
@@ -979,24 +1013,18 @@ def api_return_report(item_id):
         return jsonify({"erro": "Só é possível devolver os próprios relatórios."}), 403
 
     data = request.get_json(silent=True) or {}
-    has_outgoing_pending = (
-        RelatorioMovimento.query.filter_by(
-            relatorio_id=item.id,
-            tipo="Transferido",
-            status="pendente",
-        )
-        .filter(RelatorioMovimento.destino_relatorio_id.isnot(None))
-        .first()
-        is not None
-    )
-    ainda_com_destinatario = (
-        bool(data.get("ainda_com_destinatario")) and bool(item.destinatario)
-    ) or has_outgoing_pending
+    ainda_com_destinatario = bool(data.get("ainda_com_destinatario")) and has_outgoing_transfer(item)
+    if ainda_com_destinatario:
+        hold_transferred_units_on_close(item)
+        item.deixou_com_outro = True
     quantidade_entregue = int(item.quantidade_atual or 0)
     item.status = "Pendente" if ainda_com_destinatario else "Entregues"
     item.updated_at = datetime.utcnow()
     if ainda_com_destinatario:
-        detalhe = f"Deixou notebook com outro professor: sim ({item.destinatario})"
+        detalhe = (
+            f"Deixou notebook com outro professor: sim ({item.destinatario}). "
+            f"Quantidade atual: {item.quantidade_atual}"
+        )
     else:
         detalhe = "Deixou notebook com outro professor: não"
     log_relatorio_movimento(
@@ -1054,6 +1082,9 @@ def api_decide_transfer(item_id, move_id, acao):
         )
 
     if acao == "aceitar":
+        if origem and origem.status == "Pendente" and origem.deixou_com_outro:
+            origem.quantidade_atual = max(0, int(origem.quantidade_atual or 0) - quantidade)
+            origem.updated_at = datetime.utcnow()
         item.quantidade = int(item.quantidade or 0) + quantidade
         item.quantidade_atual = int(item.quantidade_atual or 0) + quantidade
         item.alterado = True
@@ -1073,13 +1104,20 @@ def api_decide_transfer(item_id, move_id, acao):
     else:
         move.status = "negado"
         move.detalhe = f"Negado por {current_user.username}."
-        if origem and origem.status in ("Em uso", "Pendente"):
+        origem_holds = bool(
+            origem
+            and origem.status in ("Em uso", "Pendente")
+            and not (origem.status == "Pendente" and origem.deixou_com_outro)
+        )
+        if origem_holds:
             origem.quantidade_atual = int(origem.quantidade_atual or 0) + quantidade
             origem.updated_at = datetime.utcnow()
         if origem_move:
             origem_move.status = "negado"
             origem_move.detalhe = f"Negado por {current_user.username}."
-            if origem and origem.status in ("Em uso", "Pendente"):
+            if origem_holds:
+                origem_move.detalhe += f" Quantidade atual origem: {origem.quantidade_atual}"
+            elif origem and origem.status == "Pendente" and origem.deixou_com_outro:
                 origem_move.detalhe += f" Quantidade atual origem: {origem.quantidade_atual}"
             else:
                 origem_move.detalhe += " Origem já encerrada; unidades voltam ao estoque."

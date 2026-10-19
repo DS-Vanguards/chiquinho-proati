@@ -2,7 +2,7 @@ import time
 from datetime import datetime, timedelta
 
 from flask_login import UserMixin
-from sqlalchemy import Index, func, inspect, text
+from sqlalchemy import Index, func, inspect, or_, text
 from sqlalchemy.exc import IntegrityError
 from werkzeug.security import check_password_hash, generate_password_hash
 
@@ -102,6 +102,9 @@ class User(UserMixin, db.Model):
     def can_close_other_reports(self) -> bool:
         return self.is_super_admin or self.is_vgs_owner
 
+    def can_assign_report_professor(self) -> bool:
+        return self.is_super_admin or self.is_vgs_owner
+
 
 class DeviceBlock(db.Model):
     __tablename__ = "device_blocks"
@@ -196,6 +199,7 @@ class Relatorio(db.Model):
     destinatario = db.Column(db.String(120), nullable=True)
     remetente = db.Column(db.String(120), nullable=True)
     sala_destino = db.Column(db.String(80), nullable=True)
+    deixou_com_outro = db.Column(db.Boolean, default=False, nullable=False)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
@@ -247,6 +251,7 @@ class Relatorio(db.Model):
             "destinatario": self.destinatario or "",
             "remetente": self.remetente or "",
             "sala_destino": self.sala_destino or "",
+            "deixou_com_outro": bool(self.deixou_com_outro),
             "mine": mine,
             "can_alter": can_alter,
             "can_return": can_return,
@@ -358,6 +363,23 @@ def maintenance_stock_key(tab: str, modelo: str):
     return None
 
 
+def is_outgoing_transfer(move) -> bool:
+    return (
+        getattr(move, "tipo", None) == "Transferido"
+        and not getattr(move, "origem_relatorio_id", None)
+    )
+
+
+def outgoing_transfer_moves(relatorio):
+    return [move for move in (getattr(relatorio, "movimentos", None) or []) if is_outgoing_transfer(move)]
+
+
+def has_outgoing_transfer(relatorio) -> bool:
+    return any(
+        (move.status or "") != "negado" for move in outgoing_transfer_moves(relatorio)
+    )
+
+
 def report_units_out(relatorio, entregue_map=None) -> int:
     if relatorio.status == "Entregues":
         return 0
@@ -448,6 +470,10 @@ def stock_snapshot(*, ignore_equipment_id=None, ignore_relatorio_id=None):
             RelatorioMovimento.status == "pendente",
             RelatorioMovimento.destino_relatorio_id.isnot(None),
             RelatorioMovimento.origem_relatorio_id.is_(None),
+            or_(
+                Relatorio.status != "Pendente",
+                Relatorio.deixou_com_outro.is_(False),
+            ),
         )
     )
     if ignore_relatorio_id:
@@ -598,6 +624,7 @@ def ensure_schema():
             db.session.execute(text("ALTER TABLE relatorios ADD COLUMN remetente VARCHAR(120)"))
             db.session.commit()
     ensure_transfer_schema()
+    ensure_relatorio_extra_columns()
 
 
 def ensure_transfer_schema():
@@ -618,6 +645,23 @@ def ensure_transfer_schema():
         added = True
     if added:
         db.session.commit()
+
+
+def ensure_relatorio_extra_columns():
+    inspector = inspect(db.engine)
+    if "relatorios" not in inspector.get_table_names():
+        return
+    cols = {column["name"] for column in inspector.get_columns("relatorios")}
+    if "deixou_com_outro" in cols:
+        return
+    dialect = db.engine.dialect.name
+    default = "0" if dialect == "sqlite" else "FALSE"
+    db.session.execute(
+        text(
+            f"ALTER TABLE relatorios ADD COLUMN deixou_com_outro BOOLEAN NOT NULL DEFAULT {default}"
+        )
+    )
+    db.session.commit()
 
 
 def ensure_equipment_extra_columns():

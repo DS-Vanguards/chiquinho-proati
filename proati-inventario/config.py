@@ -242,6 +242,7 @@ MAINTENANCE_STATUSES = [
     "Chamado realizado",
     "Aguardando inspeção",
 ]
+GESTAO_STATUSES = ["Em uso", "Pendente", "Entregues"]
 TAB_MODELS = {
     "regular": ["Multilaser", "Positivo", "Chromebook"],
     "tecnico": ["ThinkPad", "Positivo"],
@@ -255,6 +256,9 @@ TAB_STATUSES = {
     "tecnico": TECNICO_STATUSES,
     "manutencao": MAINTENANCE_STATUSES,
     "manutencao_tecnico": MAINTENANCE_STATUSES,
+    "gestao": GESTAO_STATUSES,
+    "gestao_tablet": GESTAO_STATUSES,
+    "gestao_tecnico": GESTAO_STATUSES,
 }
 GESTAO_STOCK = {
     "gestao": [
@@ -288,7 +292,6 @@ MAINTENANCE_STOCK_MAP = {
         "Positivo": ("gestao_tecnico", "Positivo"),
     },
 }
-GESTAO_STATUSES = ["Em uso", "Pendente", "Entregues"]
 GESTAO_MOVE_TYPES = ["Transferido", "Entregue"]
 GESTAO_TRANSFER_LIKE = ["Transferido"]
 RELATORIO_TTL_DAYS = 21
